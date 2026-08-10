@@ -6,7 +6,6 @@
 #include "gateway6/subframe2_parser.h"
 #include "gateway3/subframe2_builder.h"
 
-#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -93,6 +92,99 @@ bool TestRejectsNullOutput() {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: verify that a TOI value round-trips correctly.
+// Packs TOI into bits 22-28 (7 bits, MSB first) of an otherwise-zero vector.
+// ---------------------------------------------------------------------------
+bool TestToi(uint8_t toi_val, const std::string& label) {
+    std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
+    for (int i = 0; i < 7; ++i) {
+        bits[static_cast<size_t>(22 + i)] = (toi_val >> (6 - i)) & 1u;
+    }
+
+    lunanet::gateway6::Subframe2Data parsed;
+    std::string error;
+    if (!lunanet::gateway6::ParseSubframe2(bits, &parsed, &error)) {
+        std::cerr << "FAIL [" << label << "]: ParseSubframe2 error: " << error << "\n";
+        return false;
+    }
+    if (parsed.toi != toi_val) {
+        std::cerr << "FAIL [" << label << "]: TOI mismatch: got "
+                  << static_cast<int>(parsed.toi)
+                  << ", want " << static_cast<int>(toi_val) << "\n";
+        return false;
+    }
+    std::cout << "PASS [" << label << "]: toi=" << static_cast<int>(toi_val) << "\n";
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: verify that TOI values outside the Table 22 range are rejected.
+// ---------------------------------------------------------------------------
+bool TestToiOutOfRange(uint8_t toi_val, const std::string& label) {
+    std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
+    for (int i = 0; i < 7; ++i) {
+        bits[static_cast<size_t>(22 + i)] = (toi_val >> (6 - i)) & 1u;
+    }
+
+    lunanet::gateway6::Subframe2Data parsed;
+    std::string error;
+    if (lunanet::gateway6::ParseSubframe2(bits, &parsed, &error)) {
+        std::cerr << "FAIL [" << label << "]: expected rejection for TOI="
+                  << static_cast<int>(toi_val) << " but ParseSubframe2 returned true\n";
+        return false;
+    }
+    std::cout << "PASS [" << label << "]: rejected TOI=" << static_cast<int>(toi_val)
+              << " with \"" << error << "\"\n";
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: verify that af0 and af1 CED fields are correctly extracted.
+// Bit layout: af0 at bits 29-60 (32-bit signed), af1 at bits 61-76 (16-bit signed).
+// Scale factors: af0 * 2^-31 s, af1 * 2^-43 s/s.
+// ---------------------------------------------------------------------------
+bool TestCedFields(int32_t af0_raw, int16_t af1_raw, const std::string& label) {
+    std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
+    // Pack 32-bit af0 into bits 29-60 (MSB first).
+    for (int i = 0; i < 32; ++i) {
+        bits[static_cast<size_t>(29 + i)] =
+            (static_cast<uint32_t>(af0_raw) >> (31 - i)) & 1u;
+    }
+    // Pack 16-bit af1 into bits 61-76 (MSB first).
+    for (int i = 0; i < 16; ++i) {
+        bits[static_cast<size_t>(61 + i)] =
+            (static_cast<uint16_t>(af1_raw) >> (15 - i)) & 1u;
+    }
+
+    lunanet::gateway6::Subframe2Data parsed;
+    std::string error;
+    if (!lunanet::gateway6::ParseSubframe2(bits, &parsed, &error)) {
+        std::cerr << "FAIL [" << label << "]: ParseSubframe2 error: " << error << "\n";
+        return false;
+    }
+
+    constexpr double kAf0Scale = 4.6566128730773926e-10;  // 2^-31
+    constexpr double kAf1Scale = 1.1368683772161603e-13;  // 2^-43
+    const double expected_af0 = static_cast<double>(af0_raw) * kAf0Scale;
+    const double expected_af1 = static_cast<double>(af1_raw) * kAf1Scale;
+
+    // Use exact comparison: the computation is deterministic integer->double scaling.
+    if (parsed.ced.af0 != expected_af0) {
+        std::cerr << "FAIL [" << label << "]: af0 mismatch: got " << parsed.ced.af0
+                  << ", want " << expected_af0 << "\n";
+        return false;
+    }
+    if (parsed.ced.af1 != expected_af1) {
+        std::cerr << "FAIL [" << label << "]: af1 mismatch: got " << parsed.ced.af1
+                  << ", want " << expected_af1 << "\n";
+        return false;
+    }
+    std::cout << "PASS [" << label << "]: af0=" << parsed.ced.af0
+              << " af1=" << parsed.ced.af1 << "\n";
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Helper: verify that health status bits are correctly round-tripped.
 // We manually pack a 1176-bit vector with a known health value at bits 77-78.
 // ---------------------------------------------------------------------------
@@ -146,6 +238,22 @@ int main() {
     ok &= TestHealthBits(1, "health-marginal");
     ok &= TestHealthBits(2, "health-unhealthy");
     ok &= TestHealthBits(3, "health-do-not-use");
+
+    // TOI round-trip: boundary values within Table 22 range (0–99).
+    ok &= TestToi(0,  "toi-min");
+    ok &= TestToi(50, "toi-mid");
+    ok &= TestToi(99, "toi-max");
+
+    // TOI out-of-range values must be rejected.
+    ok &= TestToiOutOfRange(100, "toi-out-of-range-100");
+    ok &= TestToiOutOfRange(127, "toi-out-of-range-127");
+
+    // CED fields: zero, positive, and negative raw values.
+    ok &= TestCedFields(0, 0, "ced-zero");
+    ok &= TestCedFields(1, 1, "ced-positive-lsb");
+    ok &= TestCedFields(2147483647, 32767, "ced-max-positive");
+    ok &= TestCedFields(-1, -1, "ced-all-ones");
+    ok &= TestCedFields(static_cast<int32_t>(0x80000000), -32768, "ced-min-negative");
 
     return ok ? 0 : 1;
 }

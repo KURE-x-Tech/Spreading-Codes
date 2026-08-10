@@ -1,6 +1,5 @@
 #include "subframe2_parser.h"
 
-#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -56,9 +55,28 @@ bool ParseSubframe2(const std::vector<uint8_t>& decoded_data_bits,
     //   bits  0–12   WN   (13 bits, unsigned, 0–8191)
     //   bits 13–21   ITOW  (9 bits, unsigned, 0–503)
     //   bits 22–28   TOI   (7 bits, unsigned, 0–99)
-    out_data->wn   = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, 0, 13));
-    out_data->itow = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, 13, 9));
-    out_data->toi  = static_cast<uint8_t>(ExtractUBits(decoded_data_bits, 22, 7));
+    out_data->wn = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, 0, 13));
+
+    const auto itow = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, 13, 9));
+    if (itow > 503) {
+        if (error_message) {
+            *error_message = "ITOW value " + std::to_string(itow) +
+                             " exceeds Table 22 maximum of 503";
+        }
+        return false;
+    }
+
+    const auto toi = static_cast<uint8_t>(ExtractUBits(decoded_data_bits, 22, 7));
+    if (toi > 99) {
+        if (error_message) {
+            *error_message = "TOI value " + std::to_string(toi) +
+                             " exceeds Table 22 maximum of 99";
+        }
+        return false;
+    }
+
+    out_data->itow = itow;
+    out_data->toi  = toi;
 
     // -----------------------------------------------------------------------
     // CED: Clock and Ephemeris Data (MSG-G4 / MSG-G1)
