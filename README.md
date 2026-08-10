@@ -128,7 +128,8 @@ Spreading-Codes/
 
 ## Build
 
-For platform-specific reproducible build and validation commands (Windows + Linux), see `Reproduce.md`.
+For platform-specific reproducible build and validation commands on Windows,
+macOS, and Linux, see [docs/Reproduce.md](docs/Reproduce.md).
 
 **Requirements:** CMake 3.16+, C++17 compiler (MSVC 2019+, GCC 9+, Clang 10+).
 
@@ -141,6 +142,27 @@ Outputs:
 
 - `build/bin/Release/lunanet_spreading_codes.dll` - shared library with C API
 - `build/bin/Release/test_engine.exe` - validation harness
+
+### Install the `goon` Command
+
+Building updates `build/bin/goon` for single-configuration generators, or
+`build/bin/Release/goon.exe` for the documented Visual Studio build. It does
+not overwrite an older `goon` already installed on `PATH`. On macOS or Linux,
+install a self-contained, user-owned command with:
+
+```bash
+cmake --install build --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+hash -r 2>/dev/null || true
+goon version
+```
+
+The installed package includes its shared library, runtime configuration,
+specification tables, and LDPC matrices. `goon version` is generated from the
+single CMake `project(... VERSION ...)` value.
+
+Use `type -a goon` on macOS/Linux or `where.exe goon` on Windows if the shell
+still resolves an older installation.
 
 ---
 

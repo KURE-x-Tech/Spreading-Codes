@@ -10,6 +10,7 @@
 // Mid-Project Workshop programme.
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
@@ -23,6 +24,15 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
+
 #include "spreading_codes.h"
 #include "gateway1/spreading_config.h"
 #include "gateway3/frame_assembler.h"
@@ -34,6 +44,10 @@
 #include "gateway5/frame_decoder.h"
 
 namespace {
+
+namespace fs = std::filesystem;
+
+fs::path g_executable_dir;
 
 // ── Argument helpers ────────────────────────────────────────────────────────
 
@@ -110,33 +124,91 @@ bool GetDouble(Args& a, const char* flag, double& out) {
 
 // ── Config path resolution ──────────────────────────────────────────────────
 
-std::string FindConfigPath(const std::string& explicit_path) {
-    if (!explicit_path.empty()) return explicit_path;
+fs::path NativeExecutablePath() {
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768u, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length > 0 && length < buffer.size()) {
+        return fs::path(std::wstring(buffer.data(), length));
+    }
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    if (size > 0) {
+        std::vector<char> buffer(size, '\0');
+        if (_NSGetExecutablePath(buffer.data(), &size) == 0) {
+            return fs::path(buffer.data());
+        }
+    }
+#elif defined(__linux__)
+    std::vector<char> buffer(4096u, '\0');
+    while (buffer.size() <= 1024u * 1024u) {
+        const ssize_t length = readlink(
+            "/proc/self/exe", buffer.data(), buffer.size());
+        if (length < 0) break;
+        if (static_cast<std::size_t>(length) < buffer.size()) {
+            return fs::path(std::string(buffer.data(), static_cast<std::size_t>(length)));
+        }
+        buffer.resize(buffer.size() * 2u);
+    }
+#endif
+    return {};
+}
 
-    // Walk up from the executable (or cwd) looking for config/spreading_codes_config.ini
-    namespace fs = std::filesystem;
-    fs::path search = fs::current_path();
-    for (int depth = 0; depth < 5; ++depth) {
-        fs::path candidate = search / "config" / "spreading_codes_config.ini";
-        if (fs::exists(candidate)) return candidate.string();
+void InitializeExecutableDir(const char* argv0) {
+    fs::path executable = NativeExecutablePath();
+    if (executable.empty() && argv0 != nullptr && *argv0 != '\0') {
+        executable = fs::path(argv0);
+    }
+    if (executable.empty()) return;
+
+    std::error_code error;
+    executable = fs::absolute(executable, error);
+    if (error) return;
+    const fs::path canonical = fs::weakly_canonical(executable, error);
+    g_executable_dir = (error ? executable : canonical).parent_path();
+}
+
+std::string FindResourcePath(const fs::path& source_relative,
+                             const fs::path& install_relative,
+                             const std::string& fallback,
+                             bool directory) {
+    fs::path search = g_executable_dir;
+    for (int depth = 0; !search.empty() && depth < 6; ++depth) {
+        const std::array<fs::path, 2> candidates = {
+            search / install_relative,
+            search / source_relative,
+        };
+        for (const fs::path& candidate : candidates) {
+            std::error_code error;
+            const bool found = directory
+                ? fs::is_directory(candidate, error)
+                : fs::is_regular_file(candidate, error);
+            if (found && !error) return candidate.string();
+        }
         if (!search.has_parent_path() || search == search.parent_path()) break;
         search = search.parent_path();
     }
-    return "config/spreading_codes_config.ini";
+    return fallback;
+}
+
+std::string FindConfigPath(const std::string& explicit_path) {
+    if (!explicit_path.empty()) return explicit_path;
+    return FindResourcePath(
+        fs::path("config") / "spreading_codes_config.ini",
+        fs::path("share") / "lunanet" / "config" / "spreading_codes_config.ini",
+        "config/spreading_codes_config.ini",
+        false);
 }
 
 std::string FindAnnex3CsvDir(const std::string& explicit_path) {
     if (!explicit_path.empty()) return explicit_path;
-
-    namespace fs = std::filesystem;
-    fs::path search = fs::current_path();
-    for (int depth = 0; depth < 5; ++depth) {
-        fs::path candidate = search / "Validation" / "annex3" / "csv";
-        if (fs::is_directory(candidate)) return candidate.string();
-        if (!search.has_parent_path() || search == search.parent_path()) break;
-        search = search.parent_path();
-    }
-    return "Validation/annex3/csv";
+    return FindResourcePath(
+        fs::path("Validation") / "annex3" / "csv",
+        fs::path("share") / "lunanet" / "Validation" / "annex3" / "csv",
+        "Validation/annex3/csv",
+        true);
 }
 
 // ── Hex string to bytes ─────────────────────────────────────────────────────
@@ -756,6 +828,8 @@ void PrintUsage(const char* prog) {
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 int main(int argc, char** argv) {
+    InitializeExecutableDir(argc > 0 ? argv[0] : nullptr);
+
     if (argc < 2) {
         PrintUsage(argv[0]);
         return 1;

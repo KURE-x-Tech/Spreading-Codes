@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Self-Contained CLI Installation**: CMake installs `goon`, its relocatable shared library, runtime configuration, specification tables, Annex references, and LDPC matrices. Installed commands can run outside the repository working directory.
+- **CLI Version Regression Test**: `goon_version_test` verifies that CLI output matches the CMake project version.
 - **LSIS-AFS CLI Tool**: New `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs -> hex), `encode --format frame` (data -> 6000-byte frame), `encode --format iq32` (full encode -> interleaved float32 I/Q signal), `decode` (I/Q -> CRC-gated payload JSON), and `version`.
 - **Gateway 5 Integrated Receiver**: `DecodeAfsIIqSignal`, `DecodeAfsIChipStream`, and `DecodeDespreadSymbols` orchestrate I/Q normalization, Gold-code de-spreading, normalized sync acquisition, frame extraction, BCH/LDPC decode, CRC gating, and CRC stripping.
 - **Gateway 5 Decode CLI**: `goon decode` accepts headerless IQ32 or standardized LSISIQ input and emits FID/TOI, acquisition telemetry, LDPC iterations, CRC verdicts, and 1176/846/846-bit Gateway 6 payloads.
@@ -13,6 +15,7 @@
 
 ### Changed
 
+- **Single Version Source**: Removed the hard-coded `1.1.0` library string. `get_version()` now uses a generated header derived from `project(... VERSION ...)`, so rebuilding updates `goon version`.
 - **I/Q Sample Rate Relaxed**: `GenerateIq` now accepts any sample rate that is a positive integer multiple of the AFS-I chip rate (1,023,000 Hz) instead of requiring a multiple of the AFS-Q rate (5,115,000 Hz). Enables the workshop's `--rate 1023000` contract. Rational chip-index mapping used for both channels.
 - **Default Sample Rate**: Changed from 5.115 MHz (AFS-Q) to 1.023 MHz (AFS-I) to match the workshop interop convention.
 - **Documentation Status Alignment**: Updated top-level and technical docs to reflect the integrated Gateway 5 receiver and its measured qualification envelope.

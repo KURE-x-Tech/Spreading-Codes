@@ -9,6 +9,7 @@
 #include "gateway1/spreading_config.h"
 #include "gateway1/tiered_code_generator.h"
 #include "gateway1/weil_code_generator.h"
+#include "lunanet/version.h"
 
 namespace lunanet {
 
@@ -23,7 +24,6 @@ struct EngineState {
 };
 
 EngineState g_state;
-constexpr const char* kVersion = "1.1.0";
 
 void SetError(const std::string& message) {
     g_state.last_error = message;
@@ -76,7 +76,7 @@ const char* hello_moon() {
 }
 
 const char* get_version() {
-    return kVersion;
+    return build_info::kVersion;
 }
 
 const char* get_last_error() {

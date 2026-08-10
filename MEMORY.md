@@ -3,6 +3,7 @@
 ## Current State
 
 - **LSIS-AFS CLI Tool**: `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs -> 512-char hex), `encode --format frame` (-> 6000-byte frame.bin), `encode --format iq32` (-> interleaved float32 I/Q signal), and `decode` (I/Q -> CRC-gated JSON payloads).
+- **CLI Packaging**: `project(... VERSION ...)` is the single source for `goon version`. `cmake --install <build> --prefix <prefix>` creates a relocatable, self-contained CLI package with runtime config and Annex/LDPC data; building alone does not replace an older command on `PATH`.
 - **Validation**: All PRN codes (Gold, Weil Primary, Weil Tertiary) are fully passing 210/210 compliance with Annex3 validation vectors. Table 11 interim code assignments (12 LNSP nodes) validated with 60/60 checks covering secondary code cycling, PRN identity, and tiered AFS-Q construction.
 - **Test Framework**: Modular test engine (`codes/testing/`) with structured reporting - outputs console summary, markdown report, and JUnit XML for CI integration. Report totals are build-dependent and should be taken from generated artifacts under `Validation/reports/YYYY-MM-DD/HH-MM-SS.{md,xml}`.
 - **Gateway 2 (FEC Encoding)**: Complete. BCH(51,8) encoder/decoder, CRC-24Q, LDPC rate-1/2 encoder (SB2 + SB3/SB4), and 60×98 block interleaver all implemented and tested.

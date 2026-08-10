@@ -4,9 +4,10 @@ This runbook covers the supported Windows, macOS, and Linux workflows for
 building the project, running the `goon` command-line application, and executing
 the Gateway 1-6 validation tests.
 
-Run every command from the repository root. The CLI resolves its default
-configuration and Annex 3 data relative to the repository, so running it from a
-different directory may require explicit `--config` and `--csv-dir` arguments.
+Run configure and build commands from the repository root. The CLI resolves
+default runtime data relative to its own executable, so supported build-tree
+and installed layouts can run from any working directory. Use `--config` and
+`--csv-dir` only for intentional overrides.
 
 ## Prerequisites
 
@@ -88,6 +89,58 @@ ctest --test-dir build --output-on-failure
 
 Do not reuse one build directory with a different CMake generator. Use a new
 directory such as `build-vs` or `build-ninja` when switching generators.
+
+## Install the `goon` Command for QA
+
+`cmake --build` updates the executable inside the build directory only
+(`build/bin/goon` for single-configuration generators or
+`build/bin/Release/goon.exe` for Visual Studio). It does not replace a `goon`
+command that was installed previously. Compare them with:
+
+```bash
+./build/bin/goon version
+type -a goon
+goon version
+```
+
+On macOS or Linux, install without administrator privileges into the standard
+user-local prefix:
+
+```bash
+cmake --install build --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+hash -r 2>/dev/null || true
+goon version
+```
+
+If the current shell is `zsh`, `rehash` may be used instead of `hash -r`.
+Ensure `$HOME/.local/bin` appears before `/usr/local/bin` when `type -a goon`
+lists more than one copy.
+
+For a Visual Studio build on Windows:
+
+```powershell
+$prefix = Join-Path $env:LOCALAPPDATA "LunaNet"
+cmake --install build --config Release --prefix $prefix
+$env:Path = "$prefix\bin;$env:Path"
+where.exe goon
+goon.exe version
+```
+
+The installation is relocatable and includes `goon`, its shared library,
+runtime configuration, specification tables, Annex reference data, and LDPC
+matrices. QA commands therefore work outside the repository directory. The
+version printed by `goon version` is generated from `project(... VERSION ...)`
+in `CMakeLists.txt`; there is no second hard-coded CLI version.
+
+For an isolated package smoke test without modifying `PATH`:
+
+```bash
+cmake --install build --prefix /tmp/lunanet-qa
+cd /tmp
+/tmp/lunanet-qa/bin/goon version
+/tmp/lunanet-qa/bin/goon generate-codes --codes gold --output gold.txt
+```
 
 ## Run the Software
 
@@ -312,11 +365,11 @@ from the Windows quick start when creating a clean Visual Studio build.
   `build/bin/Release/`; single-configuration generators use `build/bin/`.
 - CMake reports a generator mismatch: configure a new build directory instead
   of reusing one created by another generator.
-- Configuration or Annex 3 data cannot be found: run from the repository root,
-  or pass `--config config/spreading_codes_config.ini` and
-  `--csv-dir Validation/annex3/csv` to `goon encode`.
-- Shared-library loading fails: build the executable and library in the same
-  build tree and run from the repository root.
+- Configuration or Annex 3 data cannot be found: verify the build tree is
+  complete or reinstall the self-contained package. Use `--config` and
+  `--csv-dir` only when selecting alternate data explicitly.
+- Shared-library loading fails: rebuild the complete build tree or reinstall
+  `goon` and its sibling library into the same prefix.
 - Git on a macOS external volume reports `non-monotonic index` for a
   `.git/objects/pack/._pack-*` file: remove only those AppleDouble sidecar files;
   do not remove the corresponding `pack-*` files.
