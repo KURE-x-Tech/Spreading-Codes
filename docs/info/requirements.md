@@ -11,6 +11,7 @@ LSIS-AFS signals.
 LSIS (Land and Satellite-based Integrated System) is a continuous positioning system developed by the European
 Space Agency (ESA) for Artiﬁcial Frequency Band (AFS) satellite constellations. AFS-I and AFS-Q signals
 carry navigation data using:
+
 - Low Earth Orbit (LEO) satellites
 - Spectrally efﬁcient spreading and modulation
 - Time-synchronized 12-second navigation frames
@@ -44,6 +45,7 @@ that build upon each other:
 
 The LSIS-AFS system deﬁnes signal structures, modulation schemes, and data encoding for two signal
 components:
+
 - **AFS-I (In-phase):** 1.023 Mchip/s, narrowband transmission for wide coverage
 - **AFS-Q (Quadrature):** 5.115 Mchip/s, wideband transmission for high-performance receivers
 
@@ -63,6 +65,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-1.5 | Tiered Code Assembly | Assemble spreading codes into coherent tiered sequences |
 
 **Notes:**
+
 - Codes must match Annex 3 hexadecimal reference values exactly
 - 210 distinct PRN codes across 1–210
 - Code generation must complete in < 1 second per PRN
@@ -82,6 +85,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-2.8 | Block Deinterleaver | Reverse block interleaving pattern on received data |
 
 **Notes:**
+
 - All polynomials speciﬁed in LSIS Section 2.4
 - LDPC matrices provided in Annex 1 (CSV format)
 - BER < 10⁻⁵ required at SNR > 0 dB
@@ -100,6 +104,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-3.7 | Frame Duration | Ensure frame duration = 12 seconds = 6000 symbols |
 
 **Notes:**
+
 - Bit allocations speciﬁed in Tables 14, 18, 19, 20
 - Total frame structure: SP(68) + SB1(52) + interleaved(SB2+SB3+SB4)(5880) = 6000 symbols
 - Each symbol transmitted at 500 sym/s for 12 seconds
@@ -115,6 +120,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-4.5 | Signal Export | Export I/Q samples in binary or CSV format |
 
 **Notes:**
+
 - BPSK: Logic 1 → -1.0, Logic 0 → +1.0
 - Chip rate for AFS-I: 1.023 Mchip/s (2046 samples per symbol)
 - Chip rate for AFS-Q: 5.115 Mchip/s (10230 samples per symbol)
@@ -134,6 +140,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-5.8 | Deinterleaving | Reverse block interleaving on received data |
 
 **Notes:**
+
 - Frame sync detection: > 99% at SNR > 0 dB
 - Symbol error rate < 1% at SNR > 0 dB
 - LDPC decoder: < 50 iterations, converge on valid codewords
@@ -150,6 +157,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-6.6 | Message Extraction | Extract all message ﬁelds and output in structured format |
 
 **Notes:**
+
 - All ﬁeld locations speciﬁed in LSIS Section 2.5
 - Time reconstruction accurate to code phase
 - Support all variable message types (Pages 1–4 in SB3/SB4)
@@ -166,6 +174,7 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 | FR-7.6 | Specification Compliance | Verify all "shall" requirements from LSIS doc |
 
 **Notes:**
+
 - BER vs SNR performance curves required
 - All 12 interim test codes must work
 - > 90% test code coverage
@@ -381,4 +390,3 @@ into 12-second frames containing clock, ephemeris, and network access informatio
 5. **Document as you go** — Setup, APIs, design decisions
 6. **Prepare for interoperability** — Share interfaces with other teams
 7. **Submit complete package** — Code + docs + validation by 31 August 2026
-

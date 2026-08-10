@@ -1,197 +1,288 @@
-# Reproduce Build and Validation
+# Reproduce Build, Run, and Validation
 
-This document provides reproducible build and validation commands for Windows and Linux.
+This runbook covers the supported Windows, macOS, and Linux workflows for
+building the project, running the `goon` command-line application, and executing
+the Gateway 1-6 validation tests.
 
-## Scope
-
-- Build all targets using CMake
-- Run the full validation suite
-- Run per-gateway validation (Gateway 1 to Gateway 4)
-- Run standalone Gateway 5 foundation tests
+Run every command from the repository root. The CLI resolves its default
+configuration and Annex 3 data relative to the repository, so running it from a
+different directory may require explicit `--config` and `--csv-dir` arguments.
 
 ## Prerequisites
 
-### Windows
+- CMake 3.16 or newer
+- A C++17 compiler
+- Git
 
-- CMake 3.16+
-- Visual Studio 2019+ with C++ workload (or Ninja + MSVC/Clang toolchain)
+Platform toolchains:
 
-### Linux
+- Windows: Visual Studio 2019 or newer with the Desktop development with C++
+  workload, or Ninja with an MSVC/Clang environment
+- macOS: Xcode Command Line Tools (`xcode-select --install`)
+- Linux: GCC 9 or newer or Clang 10 or newer, plus Make or Ninja
 
-- CMake 3.16+
-- C++17 compiler (GCC 9+ or Clang 10+)
-- Build tools (`make` or `ninja`)
-
-## Repository Root
-
-Run all commands from the repository root:
-
-```powershell
-# Windows PowerShell
-cd <path>\Spreading-Codes
-```
+Check the tools before configuring:
 
 ```bash
-# Linux
-cd /path/to/Spreading-Codes
+cmake --version
+c++ --version
 ```
 
-## Build (Windows)
-
-### Option A: Visual Studio Generator (multi-config)
+On Windows, run the compiler check from a Developer PowerShell if using MSVC:
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
+cmake --version
+cl
 ```
 
-Expected key outputs:
+## Quick Start
 
-- `build/bin/Release/test_engine.exe`
+### macOS or Linux
+
+```bash
+cd /path/to/Spreading-Codes
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/bin/goon version
+ctest --test-dir build --output-on-failure
+```
+
+Expected application outputs:
+
+- macOS: `build/bin/goon`, `build/bin/test_engine`, and
+  `build/lib/liblunanet_spreading_codes.dylib`
+- Linux: `build/bin/goon`, `build/bin/test_engine`, and
+  `build/lib/liblunanet_spreading_codes.so`
+
+### Windows with Visual Studio
+
+Visual Studio is a multi-configuration generator, so include `--config Release`
+when building and `-C Release` when running CTest.
+
+```powershell
+cd <path>\Spreading-Codes
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release --parallel
+.\build\bin\Release\goon.exe version
+ctest --test-dir build -C Release --output-on-failure
+```
+
+Expected application outputs:
+
 - `build/bin/Release/goon.exe`
+- `build/bin/Release/test_engine.exe`
 - `build/bin/Release/lunanet_spreading_codes.dll`
 
-### Option B: Ninja (single-config)
+### Windows with Ninja
+
+Run these commands from a Developer PowerShell so Ninja can locate the selected
+compiler.
 
 ```powershell
+cd <path>\Spreading-Codes
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cmake --build build --parallel
+.\build\bin\goon.exe version
+ctest --test-dir build --output-on-failure
 ```
 
-Expected key outputs:
+Do not reuse one build directory with a different CMake generator. Use a new
+directory such as `build-vs` or `build-ninja` when switching generators.
 
-- `build/bin/test_engine.exe`
-- `build/bin/goon.exe`
-- `build/bin/lunanet_spreading_codes.dll`
+## Run the Software
 
-## Build (Linux)
+The main application is `goon`. It can generate spreading-code families,
+assemble a 6000-symbol navigation frame, or generate an interleaved float32 I/Q
+signal.
+
+Set a convenient executable variable for the examples below.
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+# macOS or Linux
+GOON=./build/bin/goon
 ```
 
-Expected key outputs:
-
-- `build/bin/test_engine`
-- `build/bin/goon`
-- `build/lib/liblunanet_spreading_codes.so`
-
-## Validation (Windows)
-
-### Full Validation via test_engine
-
-Visual Studio generator:
-
 ```powershell
-.\build\bin\Release\test_engine.exe config\spreading_codes_config.ini
+# Visual Studio build; use .\build\bin\goon.exe for Ninja
+$GOON = ".\build\bin\Release\goon.exe"
 ```
 
-Ninja generator:
+Display the complete built-in help or version:
 
-```powershell
-.\build\bin\test_engine.exe config\spreading_codes_config.ini
+```bash
+"$GOON" --help
+"$GOON" version
 ```
 
-### Gateway-Scoped Validation via test_engine
-
-Visual Studio generator:
-
 ```powershell
-.\build\bin\Release\test_engine.exe config\spreading_codes_config.ini --gateway gateway1
-.\build\bin\Release\test_engine.exe config\spreading_codes_config.ini --gateway gateway2
-.\build\bin\Release\test_engine.exe config\spreading_codes_config.ini --gateway gateway3
-.\build\bin\Release\test_engine.exe config\spreading_codes_config.ini --gateway gateway4
+& $GOON --help
+& $GOON version
 ```
 
-Ninja generator:
+### Generate Spreading Codes
 
-```powershell
-.\build\bin\test_engine.exe config\spreading_codes_config.ini --gateway gateway1
-.\build\bin\test_engine.exe config\spreading_codes_config.ini --gateway gateway2
-.\build\bin\test_engine.exe config\spreading_codes_config.ini --gateway gateway3
-.\build\bin\test_engine.exe config\spreading_codes_config.ini --gateway gateway4
+Generate all supported code families into a directory:
+
+```bash
+"$GOON" generate-codes --codes all --output Validation/generated/cli_codes
 ```
 
-### CTest Targets
+```powershell
+& $GOON generate-codes --codes all --output Validation\generated\cli_codes
+```
+
+Generate only the Gold family as one text file:
+
+```bash
+"$GOON" generate-codes --codes gold --output Validation/generated/gold_codes.txt
+```
+
+### Assemble a Navigation Frame
+
+```bash
+"$GOON" encode \
+  --format frame \
+  --prn 1 --fid 0 --toi 42 --wn 100 --itow 250 \
+  --config config/spreading_codes_config.ini \
+  --csv-dir Validation/annex3/csv \
+  --output Validation/generated/example_frame.bin
+```
+
+PowerShell uses a backtick for line continuation:
 
 ```powershell
+& $GOON encode `
+  --format frame `
+  --prn 1 --fid 0 --toi 42 --wn 100 --itow 250 `
+  --config config\spreading_codes_config.ini `
+  --csv-dir Validation\annex3\csv `
+  --output Validation\generated\example_frame.bin
+```
+
+### Generate an I/Q Signal
+
+Replace `frame` with `iq32` to run frame assembly, spreading, modulation, and I/Q
+export end to end. A full 12-second signal is much larger than a frame file.
+
+```bash
+"$GOON" encode \
+  --format iq32 \
+  --prn 1 --fid 0 --toi 42 --wn 100 --itow 250 \
+  --rate 1023000 \
+  --config config/spreading_codes_config.ini \
+  --csv-dir Validation/annex3/csv \
+  --output Validation/iq_output/example_signal.iq32
+```
+
+The accepted ranges are PRN 1-210, FID 0-3, TOI 0-99, WN 0-8191, and ITOW
+0-511. Run `goon --help` for the command summary.
+
+## Run Validation
+
+### Recommended: CTest
+
+CTest knows the correct working directory and executable path for all configured
+tests. Run the complete suite after every clean build:
+
+```bash
 ctest --test-dir build --output-on-failure
-ctest --test-dir build -R gateway1_validation --output-on-failure
-ctest --test-dir build -R gateway2_validation --output-on-failure
-ctest --test-dir build -R gateway3_validation --output-on-failure
-ctest --test-dir build -R gateway4_validation --output-on-failure
 ```
 
-### Gateway 5 Foundation Tests (standalone executables)
+For a Visual Studio build, add the selected configuration:
 
 ```powershell
-# Visual Studio generator
-.\build\bin\Release\gateway5_frame_sync_test.exe
-.\build\bin\Release\gateway5_symbol_extractor_test.exe
-
-# Ninja generator
-.\build\bin\gateway5_frame_sync_test.exe
-.\build\bin\gateway5_symbol_extractor_test.exe
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-## Validation (Linux)
+List the tests without running them:
 
-### Full Validation via test_engine
+```bash
+ctest --test-dir build -N
+```
+
+Run one gateway or one exact test with a regular-expression filter:
+
+```bash
+ctest --test-dir build -R '^gateway1_' --output-on-failure
+ctest --test-dir build -R '^gateway2_' --output-on-failure
+ctest --test-dir build -R '^gateway3_' --output-on-failure
+ctest --test-dir build -R '^gateway4_' --output-on-failure
+ctest --test-dir build -R '^gateway5_' --output-on-failure
+ctest --test-dir build -R '^gateway6_' --output-on-failure
+ctest --test-dir build -R '^gateway6_subframe3_parser_test$' --output-on-failure
+```
+
+Add `-C Release` to these commands for a Visual Studio build.
+
+The current Gateway 5 CTest group covers frame synchronization, sync detection,
+despreading, symbol extraction, BCH decoding, deinterleaving, LDPC decoding, and
+CRC validation. Gateway 6 currently covers the Subframe 2 and Subframe 3
+parsers.
+
+### Validation Report Engine
+
+`test_engine` runs the report-producing Gateway 1-4 validation suites. CTest is
+still required for the standalone Gateway 3-6 component tests.
 
 ```bash
 ./build/bin/test_engine config/spreading_codes_config.ini
-```
-
-### Gateway-Scoped Validation via test_engine
-
-```bash
 ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway1
 ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway2
 ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway3
 ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway4
 ```
 
-### CTest Targets
+For Windows, use `build\bin\Release\test_engine.exe` with Visual Studio or
+`build\bin\test_engine.exe` with Ninja.
 
-```bash
-ctest --test-dir build --output-on-failure
-ctest --test-dir build -R gateway1_validation --output-on-failure
-ctest --test-dir build -R gateway2_validation --output-on-failure
-ctest --test-dir build -R gateway3_validation --output-on-failure
-ctest --test-dir build -R gateway4_validation --output-on-failure
-```
-
-### Gateway 5 Foundation Tests (standalone executables)
-
-```bash
-./build/bin/gateway5_frame_sync_test
-./build/bin/gateway5_symbol_extractor_test
-```
-
-## Reports
-
-Validation reports are written under:
+Reports are written to:
 
 - `Validation/reports/YYYY-MM-DD/HH-MM-SS.md`
 - `Validation/reports/YYYY-MM-DD/HH-MM-SS.xml`
 
-Gateway-filtered runs use the suffix `_gatewayX` in the filename.
+Gateway-filtered runs add `_gatewayX` to the filename.
 
-Notes:
+### Run Component Executables Directly
 
-- CTest gateway labels currently cover `gateway1_validation` through `gateway4_validation`.
-- Gateway 5 tests are separate executables and should be run directly as shown above.
+CTest is preferred, but a single-config macOS/Linux build can run a component
+test directly:
+
+```bash
+./build/bin/gateway5_crc_validation_test
+./build/bin/gateway6_subframe2_parser_test
+./build/bin/gateway6_subframe3_parser_test
+```
+
+For Windows, add `.exe` and use either `build\bin\Release\` for Visual Studio or
+`build\bin\` for Ninja.
+
+## Clean Reproduction
+
+For a release-candidate check, configure a fresh build tree rather than relying
+on incremental artifacts:
+
+```bash
+cmake -S . -B build-clean -DCMAKE_BUILD_TYPE=Release
+cmake --build build-clean --parallel
+ctest --test-dir build-clean --output-on-failure
+```
+
+Use the Visual Studio generator, `--config Release`, and `-C Release` equivalents
+from the Windows quick start when creating a clean Visual Studio build.
 
 ## Troubleshooting
 
-- If you get command not found or exit code 127 on Linux, verify you are using the correct binary path:
-  - Multi-config build trees may place binaries in `build/bin/Release/`
-  - Single-config Linux/Ninja builds usually place binaries in `build/bin/`
-- If CTest cannot find tests, re-run CMake configure:
-
-```bash
-cmake -S . -B build
-```
-
-- If shared library loading fails on Linux, ensure the binary and shared library were built in the same build tree and run from repository root.
+- `CTest` reports no tests: rerun `cmake -S . -B build`, then check
+  `ctest --test-dir build -N`.
+- Executable not found: multi-configuration generators normally use
+  `build/bin/Release/`; single-configuration generators use `build/bin/`.
+- CMake reports a generator mismatch: configure a new build directory instead
+  of reusing one created by another generator.
+- Configuration or Annex 3 data cannot be found: run from the repository root,
+  or pass `--config config/spreading_codes_config.ini` and
+  `--csv-dir Validation/annex3/csv` to `goon encode`.
+- Shared-library loading fails: build the executable and library in the same
+  build tree and run from the repository root.
+- Git on a macOS external volume reports `non-monotonic index` for a
+  `.git/objects/pack/._pack-*` file: remove only those AppleDouble sidecar files;
+  do not remove the corresponding `pack-*` files.
