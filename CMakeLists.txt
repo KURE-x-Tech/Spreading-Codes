@@ -321,6 +321,45 @@ add_test(
     COMMAND gateway5_crc_validation_test
 )
 
+add_executable(gateway5_frame_decoder_test
+    codes/gateway5/frame_decoder_test.cpp
+)
+
+target_link_libraries(gateway5_frame_decoder_test PRIVATE
+    lunanet_gateway5
+)
+
+set_target_properties(gateway5_frame_decoder_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway5_frame_decoder_test
+    COMMAND gateway5_frame_decoder_test
+)
+
+add_executable(gateway5_ber_benchmark
+    codes/gateway5/ber_benchmark.cpp
+)
+
+target_link_libraries(gateway5_ber_benchmark PRIVATE
+    lunanet_gateway5
+)
+
+set_target_properties(gateway5_ber_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway5_ber_qualification
+    COMMAND gateway5_ber_benchmark
+)
+
+set_tests_properties(gateway5_ber_qualification PROPERTIES
+    LABELS "gateway5;qualification;long"
+    TIMEOUT 120
+)
+
 set(GATEWAY6_SOURCES
     codes/gateway6/subframe2_parser.cpp
     codes/gateway6/subframe3_parser.cpp
@@ -382,6 +421,24 @@ set_target_properties(gateway6_subframe3_parser_test PROPERTIES
 add_test(
     NAME gateway6_subframe3_parser_test
     COMMAND gateway6_subframe3_parser_test
+)
+
+add_executable(gateway5_gateway6_handoff_test
+    codes/gateway6/gateway5_handoff_test.cpp
+)
+
+target_link_libraries(gateway5_gateway6_handoff_test PRIVATE
+    lunanet_gateway5
+    lunanet_gateway6
+)
+
+set_target_properties(gateway5_gateway6_handoff_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway5_gateway6_handoff_test
+    COMMAND gateway5_gateway6_handoff_test
 )
 
 set(GATEWAY1_SOURCES
@@ -447,14 +504,13 @@ set_target_properties(test_engine PROPERTIES
 add_executable(goon codes/lsis_cli.cpp)
 target_link_libraries(goon PRIVATE
     ${LIBRARY_NAME}
-    lunanet_gateway2
-    lunanet_gateway3
-    lunanet_gateway4
+    lunanet_gateway5
 )
 target_include_directories(goon PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/codes
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway3
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway4
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway5
 )
 set_target_properties(goon PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

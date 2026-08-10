@@ -7,6 +7,7 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -69,6 +70,28 @@ bool TestNoiselessRoundTripAtZeroPhase(const lunanet::gateway1::SpreadingSpecTab
             std::fabs(std::fabs(result.symbols[k]) - 1.0) > 1e-9) {
             std::cerr << "FAIL [zero-phase]: symbol " << k << " magnitude not ~1.0: "
                       << result.symbols[k] << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool TestGainInvariantLock(const lunanet::gateway1::SpreadingSpecTables& tables) {
+    constexpr int kPrn = 2;
+    const std::vector<uint8_t> data_symbols = {0, 1, 1, 0};
+    auto chip_stream = BuildAfsIChipStream(kPrn, tables, data_symbols);
+    for (double& chip : chip_stream) {
+        chip *= 0.25;
+    }
+
+    const auto result = lunanet::gateway5::DespreadAfsI(chip_stream, kPrn, tables);
+    if (!result.locked || result.code_phase != 0u || result.lock_correlation < 0.99) {
+        std::cerr << "FAIL [gain-invariant]: scaled valid signal did not lock\n";
+        return false;
+    }
+    for (std::size_t i = 0; i < data_symbols.size(); ++i) {
+        if ((result.symbols[i] < 0.0) != static_cast<bool>(data_symbols[i])) {
+            std::cerr << "FAIL [gain-invariant]: symbol mismatch at " << i << "\n";
             return false;
         }
     }
@@ -138,12 +161,72 @@ bool TestWrongPrnFailsToLock(const lunanet::gateway1::SpreadingSpecTables& table
     return true;
 }
 
+bool TestNoisyRoundTrip(const lunanet::gateway1::SpreadingSpecTables& tables) {
+    constexpr int kPrn = 11;
+    constexpr double kSnrDb = 0.1;
+    constexpr std::size_t kSymbolCount = 1000;
+    std::mt19937 rng(0xA11CEu);
+    std::uniform_int_distribution<int> random_bit(0, 1);
+    std::vector<uint8_t> data_symbols(kSymbolCount, 0u);
+    for (uint8_t& symbol : data_symbols) {
+        symbol = static_cast<uint8_t>(random_bit(rng));
+    }
+    auto chip_stream = BuildAfsIChipStream(kPrn, tables, data_symbols);
+
+    std::normal_distribution<double> gaussian(0.0, 1.0);
+    const double noise_stddev = std::pow(10.0, -kSnrDb / 20.0);
+    for (double& chip : chip_stream) {
+        chip += gaussian(rng) * noise_stddev;
+    }
+
+    const auto result = lunanet::gateway5::DespreadAfsI(
+        chip_stream, kPrn, tables, /*lock_threshold=*/0.5);
+    if (!result.locked || result.symbols.size() != data_symbols.size()) {
+        std::cerr << "FAIL [noisy]: lock or symbol count mismatch\n";
+        return false;
+    }
+    std::size_t symbol_errors = 0;
+    for (std::size_t i = 0; i < data_symbols.size(); ++i) {
+        if ((result.symbols[i] < 0.0) != static_cast<bool>(data_symbols[i])) {
+            ++symbol_errors;
+        }
+    }
+    const double symbol_error_rate = static_cast<double>(symbol_errors) /
+        static_cast<double>(data_symbols.size());
+    std::cout << "  (noisy despreader: " << symbol_errors << "/" << data_symbols.size()
+              << " symbol errors at " << kSnrDb << " dB)\n";
+    if (symbol_error_rate >= 0.01) {
+        std::cerr << "FAIL [noisy]: symbol error rate is not below 1%\n";
+        return false;
+    }
+    return true;
+}
+
 bool TestRejectsShortInput(const lunanet::gateway1::SpreadingSpecTables& tables) {
     const std::vector<double> too_short(100, 1.0);
     std::string error;
     const auto result = lunanet::gateway5::DespreadAfsI(too_short, 1, tables, 0.5, &error);
     if (result.locked || error.empty()) {
         std::cerr << "FAIL [short-input]: expected graceful rejection with an error message\n";
+        return false;
+    }
+    return true;
+}
+
+bool TestRejectsInvalidInput(const lunanet::gateway1::SpreadingSpecTables& tables) {
+    std::vector<double> chips(lunanet::gateway5::kDespreadChipsPerSymbol, 1.0);
+    std::string error;
+    if (lunanet::gateway5::DespreadAfsI(chips, 1, tables, 0.0, &error).locked ||
+        error.empty()) {
+        std::cerr << "FAIL [invalid-threshold]: expected rejection\n";
+        return false;
+    }
+
+    chips[10] = std::numeric_limits<double>::infinity();
+    error.clear();
+    if (lunanet::gateway5::DespreadAfsI(chips, 1, tables, 0.5, &error).locked ||
+        error.empty()) {
+        std::cerr << "FAIL [non-finite]: expected rejection\n";
         return false;
     }
     return true;
@@ -167,6 +250,12 @@ int main() {
         ok = false;
     }
 
+    if (TestGainInvariantLock(tables)) {
+        std::cout << "PASS: code-phase lock is invariant to reduced signal gain\n";
+    } else {
+        ok = false;
+    }
+
     if (TestNoiselessRoundTripWithUnknownPhase(tables)) {
         std::cout << "PASS: code-phase search locates the true phase and recovers data symbols\n";
     } else {
@@ -179,8 +268,20 @@ int main() {
         ok = false;
     }
 
+    if (TestNoisyRoundTrip(tables)) {
+        std::cout << "PASS: 0.1 dB chip stream has symbol error rate below 1%\n";
+    } else {
+        ok = false;
+    }
+
     if (TestRejectsShortInput(tables)) {
         std::cout << "PASS: input shorter than one code period is rejected gracefully\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestRejectsInvalidInput(tables)) {
+        std::cout << "PASS: invalid thresholds and non-finite chips are rejected\n";
     } else {
         ok = false;
     }

@@ -150,6 +150,18 @@ bool TestRejectsWrongLengthSubframe() {
     return true;
 }
 
+bool TestRejectsNonBinarySubframe() {
+    std::vector<uint8_t> bad(1200, 0u);
+    bad[117] = 2u;
+    const auto verdict = lunanet::gateway5::ValidateSubframeCrc(
+        bad, lunanet::gateway5::SubframeCrcType::Sb2);
+    if (verdict.valid || verdict.error.empty()) {
+        std::cerr << "FAIL [non-binary subframe]: expected rejection\n";
+        return false;
+    }
+    return true;
+}
+
 bool TestFrameCrcGate(const MatrixBundle& sb2,
                       const MatrixBundle& sb34,
                       std::mt19937* rng) {
@@ -239,6 +251,12 @@ int main() {
 
     if (TestRejectsWrongLengthSubframe()) {
         std::cout << "PASS: wrong-length subframe is rejected gracefully\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestRejectsNonBinarySubframe()) {
+        std::cout << "PASS: non-binary systematic data is rejected\n";
     } else {
         ok = false;
     }

@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <filesystem>
 
 namespace lunanet::gateway5 {
 namespace {
@@ -32,14 +31,41 @@ bool ValidateConfig(const FrameDecoderConfig& config, std::string* error) {
         *error = "symbol_noise_variance must be finite and > 0";
         return false;
     }
+    if (!std::isfinite(2.0 / config.symbol_noise_variance)) {
+        *error = "symbol_noise_variance is too small to produce finite LLRs";
+        return false;
+    }
     if (!std::isfinite(config.sync_psr_threshold) ||
         config.sync_psr_threshold <= 0.0) {
         *error = "sync_psr_threshold must be finite and > 0";
         return false;
     }
+    if (!std::isfinite(config.sync_peak_to_rms_threshold) ||
+        config.sync_peak_to_rms_threshold <= 0.0) {
+        *error = "sync_peak_to_rms_threshold must be finite and > 0";
+        return false;
+    }
+    if (!std::isfinite(config.sync_normalized_peak_threshold) ||
+        config.sync_normalized_peak_threshold <= 0.0 ||
+        config.sync_normalized_peak_threshold > 1.0) {
+        *error = "sync_normalized_peak_threshold must be finite and in (0, 1]";
+        return false;
+    }
     if (!std::isfinite(config.lock_threshold) ||
         config.lock_threshold <= 0.0 || config.lock_threshold > 1.0) {
         *error = "lock_threshold must be finite and in (0, 1]";
+        return false;
+    }
+    if (!std::isfinite(config.bch_min_normalized_correlation) ||
+        config.bch_min_normalized_correlation < 0.0 ||
+        config.bch_min_normalized_correlation > 1.0) {
+        *error = "bch_min_normalized_correlation must be finite and in [0, 1]";
+        return false;
+    }
+    if (!std::isfinite(config.bch_min_normalized_margin) ||
+        config.bch_min_normalized_margin < 0.0 ||
+        config.bch_min_normalized_margin > 1.0) {
+        *error = "bch_min_normalized_margin must be finite and in [0, 1]";
         return false;
     }
     if (config.max_ldpc_iterations <= 0 || config.max_ldpc_iterations > 50) {
@@ -89,7 +115,11 @@ FrameDecodeResult DecodeSymbolsImpl(
         return finish("Despread symbol stream contains a non-finite value");
     }
 
-    result.sync = DetectFrameSync(symbols, config.sync_psr_threshold);
+    result.sync = DetectFrameSync(
+        symbols,
+        config.sync_psr_threshold,
+        config.sync_peak_to_rms_threshold,
+        config.sync_normalized_peak_threshold);
     if (!result.sync.detected) {
         return finish("Frame synchronization failed: no peak cleared the PSR threshold");
     }
@@ -99,10 +129,14 @@ FrameDecodeResult DecodeSymbolsImpl(
         return finish("Frame synchronization succeeded but fewer than 6000 symbols remain");
     }
 
-    result.sb1_value = DecodeSb1BchSoft(frame.sb1);
-    if (result.sb1_value < 0) {
-        return finish("SB1 BCH decoder rejected the extracted symbol count");
+    result.sb1_bch = DecodeSb1BchSoftDetailed(
+        frame.sb1,
+        config.bch_min_normalized_correlation,
+        config.bch_min_normalized_margin);
+    if (!result.sb1_bch.decoded) {
+        return finish("SB1 BCH decode rejected ambiguous or low-confidence symbols");
     }
+    result.sb1_value = result.sb1_bch.value;
     result.fid = static_cast<uint8_t>((result.sb1_value >> 7) & 0x3);
     result.toi = static_cast<uint8_t>(result.sb1_value & 0x7F);
 
@@ -111,9 +145,16 @@ FrameDecodeResult DecodeSymbolsImpl(
         return finish("Deinterleaver rejected the extracted interleaved block");
     }
 
-    const auto sb2_llrs = ComputeLlr(soft.sb2, config.symbol_noise_variance);
-    const auto sb3_llrs = ComputeLlr(soft.sb3, config.symbol_noise_variance);
-    const auto sb4_llrs = ComputeLlr(soft.sb4, config.symbol_noise_variance);
+    std::vector<double> sb2_llrs;
+    std::vector<double> sb3_llrs;
+    std::vector<double> sb4_llrs;
+    try {
+        sb2_llrs = ComputeLlr(soft.sb2, config.symbol_noise_variance);
+        sb3_llrs = ComputeLlr(soft.sb3, config.symbol_noise_variance);
+        sb4_llrs = ComputeLlr(soft.sb4, config.symbol_noise_variance);
+    } catch (const std::exception& exception) {
+        return finish("LLR generation failed: " + std::string(exception.what()));
+    }
 
     std::string stage_error;
     result.sb2_ldpc = DecodeLdpcMinSum(
@@ -179,18 +220,21 @@ bool LoadDecoderMatrices(const std::string& annex3_csv_dir,
         return false;
     }
 
-    const std::filesystem::path csv_dir(annex3_csv_dir);
+    std::string csv_dir = annex3_csv_dir;
+    if (!csv_dir.empty() && csv_dir.back() != '/' && csv_dir.back() != '\\') {
+        csv_dir += '/';
+    }
     DecoderMatrices loaded;
     loaded.sb2 = std::move(frame_matrices.sb2);
     loaded.sb34 = std::move(frame_matrices.sb34);
 
     if (!lunanet::gateway2::LoadBinaryMatrixCsv(
-            (csv_dir / "004j_lunanet_sf2_ldpc_submatrix_b_mat.csv").string(),
+            csv_dir + "004j_lunanet_sf2_ldpc_submatrix_b_mat.csv",
             &loaded.sb2_b, error_message)) {
         return false;
     }
     if (!lunanet::gateway2::LoadBinaryMatrixCsv(
-            (csv_dir / "004c_lunanet_sf3_ldpc_submatrix_b_mat.csv").string(),
+            csv_dir + "004c_lunanet_sf3_ldpc_submatrix_b_mat.csv",
             &loaded.sb34_b, error_message)) {
         return false;
     }
@@ -253,6 +297,13 @@ FrameDecodeResult DecodeAfsIIqSignal(
     }
     if (!signal.q.empty() && signal.q.size() != signal.i.size()) {
         result.error = "I/Q signal has mismatched channel lengths";
+        return result;
+    }
+    if (!signal.q.empty() &&
+        !std::all_of(signal.q.begin(), signal.q.end(), [](const float sample) {
+            return std::isfinite(sample);
+        })) {
+        result.error = "I/Q signal contains a non-finite quadrature sample";
         return result;
     }
     if (signal.sample_rate_hz <= 0 ||

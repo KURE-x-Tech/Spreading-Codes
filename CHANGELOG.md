@@ -4,15 +4,19 @@
 
 ### Added
 
-- **LSIS-AFS CLI Tool**: New `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs → hex), `encode --format frame` (data → 6000-byte frame), `encode --format iq32` (full encode → interleaved float32 I/Q signal), `version`.
+- **LSIS-AFS CLI Tool**: New `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs -> hex), `encode --format frame` (data -> 6000-byte frame), `encode --format iq32` (full encode -> interleaved float32 I/Q signal), `decode` (I/Q -> CRC-gated payload JSON), and `version`.
+- **Gateway 5 Integrated Receiver**: `DecodeAfsIIqSignal`, `DecodeAfsIChipStream`, and `DecodeDespreadSymbols` orchestrate I/Q normalization, Gold-code de-spreading, normalized sync acquisition, frame extraction, BCH/LDPC decode, CRC gating, and CRC stripping.
+- **Gateway 5 Decode CLI**: `goon decode` accepts headerless IQ32 or standardized LSISIQ input and emits FID/TOI, acquisition telemetry, LDPC iterations, CRC verdicts, and 1176/846/846-bit Gateway 6 payloads.
+- **Gateway 5 Qualification**: Deterministic sync, false-alarm, de-spread SER, full-frame, malformed-input, BER, latency, and Gateway 5-to-6 navigation handoff tests. The reproducible 3 dB campaign observed 0 post-LDPC errors in 299,880 bits with 102/102 CRC-accepted frames.
+- **Gateway 5 Guide**: `docs/G5/GATEWAY5_DECODER.md` documents commands, API usage, stage behavior, output contracts, qualification, and operating boundaries.
 - **Frame Raw Export**: `ExportFrameRaw()` in `frame_exporter` writes one byte per symbol (0x00/0x01) matching the workshop CI `frame.bin` format (6000 bytes).
-- **Gateway 5 Foundation Tests**: Documented standalone Gateway 5 validation targets (`gateway5_frame_sync_test`, `gateway5_symbol_extractor_test`) in project docs and reproduce instructions.
 
 ### Changed
 
 - **I/Q Sample Rate Relaxed**: `GenerateIq` now accepts any sample rate that is a positive integer multiple of the AFS-I chip rate (1,023,000 Hz) instead of requiring a multiple of the AFS-Q rate (5,115,000 Hz). Enables the workshop's `--rate 1023000` contract. Rational chip-index mapping used for both channels.
 - **Default Sample Rate**: Changed from 5.115 MHz (AFS-Q) to 1.023 MHz (AFS-I) to match the workshop interop convention.
-- **Documentation Status Alignment**: Updated top-level and technical docs to reflect current Gateway 5 state as partial in-repo foundations (sync reference, frame slicing, LLR helper) with full decode-chain work still pending.
+- **Documentation Status Alignment**: Updated top-level and technical docs to reflect the integrated Gateway 5 receiver and its measured qualification envelope.
+- **LDPC Shortened Bits**: Restored SB3/SB4 filler positions as strong known-zero priors instead of erasures, reducing noiseless convergence from three iterations to two in the reference case.
 - **Knowledge-Bank Referencing**: Added explicit reference to `KURE-x-Tech/Asteria-Knowledge-Base-G5-share` as external design/scaffold guidance (not auto-integrated code).
 
 - **Table 11 Validation (SC-1.6)**: 60-test suite verifying all 12 LNSP node assignments — secondary code cycling (S0→S3), AFS-I/Q PRN identity, and tiered AFS-Q structural correctness (primary ⊕ secondary ⊕ tertiary).

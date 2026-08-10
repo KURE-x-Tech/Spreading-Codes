@@ -16,6 +16,18 @@ bool ExportIqBinary(const IqSignal& signal,
                     const std::string& output_path,
                     std::string* error_message = nullptr);
 
+// Reads headerless interleaved little-endian float32 I/Q pairs written by
+// ExportIqBinary. Since the format carries no metadata, the caller must supply
+// the sample rate.
+//
+// @return true on success; false with *error_message set for an invalid sample
+//         rate, empty/truncated input, malformed pair length, or non-finite
+//         sample value.
+bool ImportIqBinary(const std::string& input_path,
+                    int sample_rate_hz,
+                    IqSignal* out_signal,
+                    std::string* error_message = nullptr);
+
 // Writes I/Q samples as CSV with a header line "index,I,Q", one sample per row.
 //
 // @return true on success; sets *error_message on failure.

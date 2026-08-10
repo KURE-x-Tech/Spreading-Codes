@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -167,6 +168,22 @@ bool TestPunctureRestoreLengths(const MatrixBundle& sb2,
         return false;
     }
 
+    for (int i = 0; i < lunanet::gateway2::kLdpcSb34.puncture_z2; ++i) {
+        if (full_sb34[static_cast<std::size_t>(i)] != 0.0) {
+            std::cerr << "FAIL [restore puncture]: punctured bit is not an erasure\n";
+            return false;
+        }
+    }
+    for (int i = lunanet::gateway2::kLdpcSb34.data_bits;
+         i < lunanet::gateway2::kLdpcSb34.info_bits;
+         ++i) {
+        if (full_sb34[static_cast<std::size_t>(i)] !=
+            lunanet::gateway5::kShortenedZeroLlr) {
+            std::cerr << "FAIL [restore filler]: shortened zero has no known-bit prior\n";
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -197,6 +214,69 @@ bool TestRejectsWrongSizeLlrs(const MatrixBundle& sb2) {
     return true;
 }
 
+bool TestRejectsUnsafeInputs(const MatrixBundle& sb2) {
+    std::string error;
+    std::vector<double> llrs(
+        static_cast<std::size_t>(lunanet::gateway2::kLdpcSb2.output_symbols), 1.0);
+    llrs[5] = std::numeric_limits<double>::quiet_NaN();
+    auto decoded = lunanet::gateway5::DecodeLdpcMinSum(
+        llrs, sb2.enc, sb2.b, lunanet::gateway2::kLdpcSb2, 50, 0.75, &error);
+    if (decoded.converged || error.empty()) {
+        std::cerr << "FAIL [non-finite LLR]: expected rejection\n";
+        return false;
+    }
+
+    llrs[5] = 1.0;
+    error.clear();
+    decoded = lunanet::gateway5::DecodeLdpcMinSum(
+        llrs, sb2.enc, sb2.b, lunanet::gateway2::kLdpcSb2, 51, 0.75, &error);
+    if (decoded.converged || error.empty()) {
+        std::cerr << "FAIL [iteration limit]: expected rejection\n";
+        return false;
+    }
+
+    auto bad_params = lunanet::gateway2::kLdpcSb2;
+    --bad_params.info_bits;
+    error.clear();
+    decoded = lunanet::gateway5::DecodeLdpcMinSum(
+        llrs, sb2.enc, sb2.b, bad_params, 50, 0.75, &error);
+    if (decoded.converged || error.empty()) {
+        std::cerr << "FAIL [parameter mismatch]: expected rejection\n";
+        return false;
+    }
+
+    auto bad_b = sb2.b;
+    bad_b.data.pop_back();
+    error.clear();
+    decoded = lunanet::gateway5::DecodeLdpcMinSum(
+        llrs, sb2.enc, bad_b, lunanet::gateway2::kLdpcSb2, 50, 0.75, &error);
+    if (decoded.converged || error.empty()) {
+        std::cerr << "FAIL [matrix storage]: expected rejection\n";
+        return false;
+    }
+
+    const std::vector<double> huge_finite_llrs(
+        static_cast<std::size_t>(lunanet::gateway2::kLdpcSb2.output_symbols),
+        std::numeric_limits<double>::max());
+    error.clear();
+    decoded = lunanet::gateway5::DecodeLdpcMinSum(
+        huge_finite_llrs,
+        sb2.enc,
+        sb2.b,
+        lunanet::gateway2::kLdpcSb2,
+        50,
+        0.75,
+        &error);
+    if (!decoded.converged ||
+        !std::all_of(decoded.decoded_data_bits.begin(),
+                     decoded.decoded_data_bits.end(),
+                     [](const uint8_t bit) { return bit == 0u; })) {
+        std::cerr << "FAIL [message saturation]: huge finite LLRs were unstable\n";
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 int main() {
@@ -220,13 +300,19 @@ int main() {
     }
 
     if (TestPunctureRestoreLengths(sb2, sb34)) {
-        std::cout << "PASS: puncture-restore reconstructs full-codeword lengths\n";
+        std::cout << "PASS: puncture-restore preserves erasures and shortened-zero priors\n";
     } else {
         ok = false;
     }
 
     if (TestRejectsWrongSizeLlrs(sb2)) {
         std::cout << "PASS: wrong-size LLR vector is rejected gracefully\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestRejectsUnsafeInputs(sb2)) {
+        std::cout << "PASS: unsafe LDPC values, limits, params, and storage are rejected\n";
     } else {
         ok = false;
     }

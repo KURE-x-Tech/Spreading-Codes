@@ -9,6 +9,12 @@
 
 namespace lunanet::gateway5 {
 
+// SB3/SB4 filler bits are shortened code bits whose transmitted value is
+// known to be zero. A strong finite prior preserves that information without
+// introducing infinities into min-sum message arithmetic.
+constexpr double kLdpcMessageLimit = 50.0;
+constexpr double kShortenedZeroLlr = kLdpcMessageLimit;
+
 struct LdpcDecodeResult {
     std::vector<uint8_t> decoded_data_bits;
     bool converged = false;

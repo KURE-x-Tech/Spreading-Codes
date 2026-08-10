@@ -10,6 +10,7 @@
 #include "gateway1/spreading_config.h"
 #include "gateway2/ldpc_encoder.h"
 #include "gateway4/iq_generator.h"
+#include "gateway5/bch_soft_decoder.h"
 #include "gateway5/crc_validator.h"
 #include "gateway5/ldpc_decoder.h"
 #include "gateway5/sync_detector.h"
@@ -27,7 +28,11 @@ struct FrameDecoderConfig {
     int prn = 0;
     double symbol_noise_variance = 1.0;
     double sync_psr_threshold = kDefaultSyncPsrThreshold;
+    double sync_peak_to_rms_threshold = kDefaultSyncPeakToRmsThreshold;
+    double sync_normalized_peak_threshold = kDefaultSyncNormalizedPeakThreshold;
     double lock_threshold = 0.5;
+    double bch_min_normalized_correlation = kDefaultBchMinNormalizedCorrelation;
+    double bch_min_normalized_margin = kDefaultBchMinNormalizedMargin;
     int max_ldpc_iterations = 50;
     double ldpc_alpha = 0.75;
 };
@@ -40,6 +45,7 @@ struct FrameDecodeResult {
     double lock_correlation = 0.0;
     FrameSyncResult sync;
 
+    BchSoftDecodeResult sb1_bch;
     int sb1_value = -1;
     uint8_t fid = 0;
     uint8_t toi = 0;

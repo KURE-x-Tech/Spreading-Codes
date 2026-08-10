@@ -214,10 +214,42 @@ ctest --test-dir build -R '^gateway6_subframe3_parser_test$' --output-on-failure
 
 Add `-C Release` to these commands for a Visual Studio build.
 
-The current Gateway 5 CTest group covers frame synchronization, sync detection,
-despreading, symbol extraction, BCH decoding, deinterleaving, LDPC decoding, and
-CRC validation. Gateway 6 currently covers the Subframe 2 and Subframe 3
-parsers.
+The Gateway 5 CTest group covers frame synchronization, sync detection,
+despreading, symbol extraction, BCH decoding, deinterleaving, LDPC decoding,
+CRC validation, complete frame decoding, and the Gateway 5-to-6 navigation
+handoff. Gateway 6 also has focused Subframe 2 and Subframe 3 parser tests.
+
+The Gateway 5 CTest filter includes the longer deterministic BER qualification.
+Run it directly when only the benchmark report is needed:
+
+```bash
+./build/bin/gateway5_ber_benchmark
+```
+
+For Visual Studio, use `build\bin\Release\gateway5_ber_benchmark.exe`.
+
+The benchmark decodes 102 real-matrix SB2/SB3/SB4 sets at 3 dB. Its fixed seed
+and 299,880 decoded bits make the empirical BER and CRC-acceptance result
+reproducible. It does not treat correlated bits within an LDPC codeword as
+independent statistical trials.
+
+### Decode a Navigation Signal
+
+Generate and decode the headerless workshop IQ32 format:
+
+```bash
+./build/bin/goon encode \
+  --format iq32 --prn 7 --fid 2 --toi 73 --wn 1234 --itow 256 \
+  --output signal.iq32
+
+./build/bin/goon decode \
+  --input signal.iq32 --input-format raw --prn 7 --rate 1023000 \
+  --output decoded.json
+```
+
+`decoded.json` contains FID/TOI, acquisition and LDPC telemetry, CRC verdicts,
+and CRC-stripped SB2/SB3/SB4 payloads. See `docs/G5/GATEWAY5_DECODER.md` for the
+standardized input format, API usage, stage behavior, and operating limits.
 
 ### Validation Report Engine
 
@@ -249,6 +281,8 @@ test directly:
 
 ```bash
 ./build/bin/gateway5_crc_validation_test
+./build/bin/gateway5_frame_decoder_test
+./build/bin/gateway5_gateway6_handoff_test
 ./build/bin/gateway6_subframe2_parser_test
 ./build/bin/gateway6_subframe3_parser_test
 ```

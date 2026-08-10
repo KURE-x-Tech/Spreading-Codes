@@ -17,8 +17,9 @@ namespace lunanet::gateway5 {
 // gateway4's signal-generation config from this decode-side module.
 constexpr int kDespreadChipsPerSymbol = 2046;
 
-// Minimum normalized correlation (|correlation| / kDespreadChipsPerSymbol)
-// required to declare a code-phase lock. Not specified by the LSIS-AFS
+// Minimum cosine-normalized correlation
+// (|correlation| / sqrt(code_energy * received_window_energy)) required to
+// declare a code-phase lock. Not specified by the LSIS-AFS
 // spec -- this stage is only described there as "de-spreading using known
 // codes" (REQUIREMENTS_MATRIX FSD-5.3), with no numeric acceptance
 // criterion. Chosen empirically (see despreader_test.cpp): Gold codes have
@@ -30,7 +31,7 @@ constexpr double kDefaultLockThreshold = 0.5;
 struct DespreadResult {
     bool locked = false;
     std::size_t code_phase = 0;   // Chip offset where the lock was found.
-    double lock_correlation = 0.0;  // Normalized correlation at code_phase.
+    double lock_correlation = 0.0;  // Scale-invariant correlation at code_phase.
     std::vector<double> symbols;    // One soft value per despread symbol.
 };
 

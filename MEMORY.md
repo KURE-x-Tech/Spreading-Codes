@@ -2,13 +2,13 @@
 
 ## Current State
 
-- **LSIS-AFS CLI Tool**: `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs → 512-char hex), `encode --format frame` (→ 6000-byte frame.bin), `encode --format iq32` (→ interleaved float32 I/Q signal). Links all four gateway libraries.
+- **LSIS-AFS CLI Tool**: `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs -> 512-char hex), `encode --format frame` (-> 6000-byte frame.bin), `encode --format iq32` (-> interleaved float32 I/Q signal), and `decode` (I/Q -> CRC-gated JSON payloads).
 - **Validation**: All PRN codes (Gold, Weil Primary, Weil Tertiary) are fully passing 210/210 compliance with Annex3 validation vectors. Table 11 interim code assignments (12 LNSP nodes) validated with 60/60 checks covering secondary code cycling, PRN identity, and tiered AFS-Q construction.
 - **Test Framework**: Modular test engine (`codes/testing/`) with structured reporting - outputs console summary, markdown report, and JUnit XML for CI integration. Report totals are build-dependent and should be taken from generated artifacts under `Validation/reports/YYYY-MM-DD/HH-MM-SS.{md,xml}`.
 - **Gateway 2 (FEC Encoding)**: Complete. BCH(51,8) encoder/decoder, CRC-24Q, LDPC rate-1/2 encoder (SB2 + SB3/SB4), and 60×98 block interleaver all implemented and tested.
 - **Gateway 3 (Frame Assembly)**: Complete. Sync pattern + SB1(BCH) + SB2/SB3/SB4(CRC+LDPC) + 60×98 interleave → 6000 symbols. Raw export (1 byte/symbol) for workshop CI.
 - **Gateway 4 (Signal Generation)**: Complete. BPSK modulation, AFS-I data spreading, I/Q baseband generation with rational sample-rate mapping. Default rate 1.023 MHz (workshop contract). Supports any integer multiple of the AFS-I chip rate.
-- **Gateway 5 (Partial Foundations)**: In-repo decode-side foundations exist: sync reference symbol generation (`frame_synchronizer`), 6000-symbol slicing and LLR helper (`symbol_extractor`), and standalone CMake tests (`gateway5_frame_sync_test`, `gateway5_symbol_extractor_test`). Full noisy-stream frame sync + LDPC decode-chain integration remains pending.
+- **Gateway 5 (Integrated Receiver)**: Headerless/standard I/Q import, gain-normalized Gold-code de-spreading, statistically qualified noisy frame sync, confidence-gated BCH, soft deinterleaving, saturated/shortened-bit-safe LDPC, CRC-gated acceptance, CRC stripping, `goon decode`, empirical BER qualification, and a direct Gateway 6 payload handoff are implemented. The documented software profile is qualified at 3 dB full-frame SNR; broader SNR curves and external recordings remain Gateway 7 work.
 - **Python Bridge**: Zero-dependency ctypes wrapper (`codes/python/lunanet.py`) over C-linkage DLL API (`codes/c_api.h`). Exposes all code generators, BCH encoding, and CRC-24 to Python. Smoke-tested.
 - **I/Q Generation (Python)**: BPSK(1) baseband signal generator (`codes/python/iq_generator.py`) outputs binary float32 and CSV I/Q files. Mapping: 0→+1.0, 1→-1.0.
 - **Report Viewer**: Tkinter GUI (`codes/gateway1/gui/report_viewer.py`) with dark theme, color-coded pass/fail table rows, suite/status filtering, and auto-discovery of timestamped reports.
@@ -29,11 +29,17 @@
 - `codes/gateway2/interleaver.h/.cpp` - 60×98 block interleaver/deinterleaver.
 - `codes/gateway2/ldpc_encoder.h/.cpp` - LDPC rate-1/2 encoder with dense GF(2) matrix ops and CSV loader.
 - `codes/gateway5/frame_synchronizer.h/.cpp` - Stage-1 sync reference symbol construction from the fixed SP pattern.
+- `codes/gateway5/frame_decoder.h/.cpp` - Integrated I/Q-to-payload receiver orchestration and telemetry.
+- `codes/gateway5/despreader.h/.cpp` - Gain-normalized Gold-code acquisition and integrate-and-dump.
+- `codes/gateway5/sync_detector.h/.cpp` - Normalized matched-correlation frame acquisition.
+- `codes/gateway5/bch_soft_decoder.h/.cpp` - Confidence-gated SB1 soft decoder.
+- `codes/gateway5/ldpc_decoder.h/.cpp` - Saturated normalized min-sum SB2-SB4 decoder.
+- `codes/gateway5/crc_validator.h/.cpp` - CRC-24Q frame acceptance gate.
 - `codes/gateway5/symbol_extractor.h/.cpp` - Frame region slicing (SP/SB1/interleaved) + LLR conversion helper.
 - `codes/c_api.h/.cpp` - C-linkage DLL shim for ctypes/FFI access.
 - `codes/python/lunanet.py` - Zero-dependency Python wrapper over the C API.
 - `codes/python/iq_generator.py` - BPSK(1) I/Q signal generator (float32 binary + CSV export).
-- `codes/lsis_cli.cpp` - Workshop CLI tool: generate-codes, encode --format frame|iq32, version.
+- `codes/lsis_cli.cpp` - Workshop CLI tool: generate-codes, encode, decode, version.
 
 ## Active Tasks (Completed)
 
@@ -56,6 +62,7 @@
 
 ## Next Steps
 
-- Gateway 5 completion: full frame-sync detector for noisy streams, de-spreading chain integration, LDPC decoder integration/validation, CRC-gated decode flow, and BER/sync reliability qualification.
-- Full round-trip encode → decode pipeline for Level 3 cross-decode at future workshops.
+- Gateway 6 completion: SB4 parsing and Time of Transmission calculation.
+- Gateway 7: BER-vs-SNR curves below/above the qualified 3 dB profile and external cross-team recordings.
+- Full round-trip encode -> decode -> parse interoperability at future workshops.
 - Docker containerisation for the CLI tool (alternative to bare executable for GitLab CI).

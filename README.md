@@ -2,7 +2,7 @@
 
 Implementation of the LunaNet Augmented Forward Signal (AFS) spreading code generators and forward error correction (FEC) encoders, built to the **LSIS-AFS Volume A** specification.
 
-Current status: Gateways 1-4 are implemented and validated in the main pipeline, and Gateway 5 has partial in-repo foundations (sync reference, frame slicing, and LLR utilities).
+Current status: Gateways 1-5 are implemented in the main pipeline. Gateway 5 provides `goon decode`, CRC-gated payload output, reproducible sync/SER/BER qualification, and a tested Gateway 6 handoff. Gateway 6 parsing is in progress.
 
 ---
 
@@ -41,13 +41,15 @@ Current status: Gateways 1-4 are implemented and validated in the main pipeline,
 - **Configurable Sample Rate** - Generates I/Q at any positive integer multiple of 1.023 MHz (default: 1.023 MHz workshop profile).
 - **Signal Exporters** - Interleaved float32 little-endian binary (`[I0,Q0,I1,Q1,...]`) and CSV (`index,I,Q`) output formats.
 
-### Gateway 5 - Frame Sync & Decode Foundations (Partial)
+### Gateway 5 - Frame Synchronization and Decoding
 
-- **Sync Reference Builder** - `BuildSyncReferenceSymbols()` maps the fixed 68-symbol sync pattern to BPSK reference symbols for Stage 1 frame synchronization.
-- **Frame Symbol Extractor** - `ExtractFrameSymbols()` slices a detected 6000-symbol frame into SP(68), SB1(52), and interleaved(5880) regions.
-- **Soft-Decision Helper** - `ComputeLlr()` converts signed soft symbols to LLRs using `LLR = 2r/sigma^2` (positive LLR => bit 0).
-- **Gateway 5 Unit Tests** - Standalone tests validate sync reference bits/symbols, extraction boundaries, LLR mapping, and a BCH round-trip rung.
-- **Known Gap** - Full noisy-stream frame sync detector, full LDPC decode-chain integration, and BER/sync-rate qualification are still pending.
+- **Integrated Receiver** - `DecodeAfsIIqSignal()` orchestrates I/Q normalization, Gold-code de-spreading, sync detection, frame extraction, BCH/LDPC decoding, CRC gating, and CRC stripping.
+- **Robust Synchronization** - Normalized matched correlation with PSR, peak-to-RMS, and normalized-peak confidence gates recovers noisy, offset frames.
+- **Soft FEC Decode** - Exhaustive BCH correlation and real-Annex-matrix normalized min-sum LDPC decoding preserve soft decisions and report convergence telemetry.
+- **Gateway 6 Contract** - Accepted frames expose CRC-stripped SB2/SB3/SB4 payloads of 1176/846/846 bits; a cross-gateway test parses SB2 time fields and an SB3 almanac directly.
+- **Decode CLI** - `goon decode` accepts headerless IQ32 or standardized LSISIQ input and emits JSON payloads plus acquisition/FEC telemetry.
+- **Qualification** - Sync: 9960/10000 at 0.1 dB with a 99.4819% one-sided 95% lower bound; de-spread SER: 0/1000 at 0.1 dB; empirical post-LDPC BER: 0/299,880 bits at 3 dB with 102/102 CRC-accepted frames; worst measured three-subframe decode: 70.8 ms.
+- **Usage and Limits** - See [docs/G5/GATEWAY5_DECODER.md](docs/G5/GATEWAY5_DECODER.md).
 
 ### Cross-Language Bridge
 
@@ -99,11 +101,14 @@ Spreading-Codes/
 │   │   ├── iq_generator.*          #   Time-aligned I/Q sample generation
 │   │   ├── signal_exporter.*       #   float32 binary + CSV exporters
 │   │   └── signal_config.h         #   Chip-rate and frame timing constants
-│   ├── gateway5/                   # Decode-side foundations (partial)
-│   │   ├── frame_synchronizer.*    #   Sync reference symbol construction
-│   │   ├── symbol_extractor.*      #   6000-symbol frame slicing + LLR helper
-│   │   ├── frame_sync_test.cpp     #   Sync pattern/reference validation
-│   │   └── symbol_extractor_test.cpp # Extraction/LLR/BCH validation ladder
+│   ├── gateway5/                   # Integrated AFS-I receiver and decoder
+│   │   ├── frame_decoder.*         #   I/Q-to-payload orchestration + telemetry
+│   │   ├── sync_detector.*         #   Normalized frame acquisition
+│   │   ├── despreader.*            #   Gold-code acquisition/integrate-dump
+│   │   ├── bch_soft_decoder.*      #   SB1 exhaustive soft decoder
+│   │   ├── deinterleaver.*         #   60x98 soft deinterleaver
+│   │   ├── ldpc_decoder.*          #   SB2-SB4 normalized min-sum decoder
+│   │   └── crc_validator.*         #   CRC-24Q frame acceptance gate
 │   ├── testing/                    # Test framework
 │   │   ├── test_reporter.*         #   Markdown + JUnit XML output
 │   │   ├── test_validators.*       #   Validation primitives
@@ -180,16 +185,13 @@ Run only one gateway validation scope:
 ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway4
 ```
 
-Run standalone Gateway 5 foundation tests:
+Run the Gateway 5 component, full-frame, and Gateway 6 handoff tests:
 
 ```bash
-# Multi-config (Visual Studio)
-./build/bin/Release/gateway5_frame_sync_test
-./build/bin/Release/gateway5_symbol_extractor_test
+ctest --test-dir build -R '^gateway5_' --output-on-failure
 
-# Single-config (Ninja/Unix)
-./build/bin/gateway5_frame_sync_test
-./build/bin/gateway5_symbol_extractor_test
+# Longer deterministic BER qualification
+./build/bin/gateway5_ber_benchmark
 ```
 
 Gateway 4 validation includes an **EndToEnd/Pipeline** integration scope:
@@ -284,8 +286,8 @@ Full PRN generation pipeline (Gold + Weil Primary + Weil Tertiary + AFS-Q) compl
 - [x] Python bridge layer (ctypes + C API)
 - [x] BPSK(1) I/Q signal generation
 - [x] Gateway 4 - Baseband signal generation (BPSK modulation, I/Q samples)
-- [ ] Gateway 5 - Full decoding pipeline completion (currently partial foundations implemented)
-- [ ] Gateway 6 - Message parsing pipeline
+- [x] Gateway 5 - Frame synchronization, FEC decode, CRC gate, CLI, and qualification
+- [ ] Gateway 6 - Message parsing pipeline (SB2/SB3 and Gateway 5 handoff implemented)
 - [x] End-to-end pipeline validation
 
 ---
