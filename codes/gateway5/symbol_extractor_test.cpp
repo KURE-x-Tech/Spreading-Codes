@@ -190,6 +190,24 @@ static bool TestLlrInvalidVariance() {
         // expected
     }
 
+    try {
+        lunanet::gateway5::ComputeLlr(
+            v, std::numeric_limits<double>::quiet_NaN());
+        std::cerr << "FAIL [LLR invalid variance]: expected exception for NaN\n";
+        return false;
+    } catch (const std::invalid_argument&) {
+        // expected
+    }
+
+    try {
+        lunanet::gateway5::ComputeLlr(
+            {std::numeric_limits<double>::infinity()}, 1.0);
+        std::cerr << "FAIL [LLR invalid sample]: expected exception for Infinity\n";
+        return false;
+    } catch (const std::invalid_argument&) {
+        // expected
+    }
+
     return true;
 }
 
@@ -228,7 +246,7 @@ int main() {
     }
 
     if (TestLlrInvalidVariance()) {
-        std::cout << "PASS: ComputeLlr throws on non-positive noise_variance\n";
+        std::cout << "PASS: ComputeLlr rejects invalid variance and samples\n";
     } else {
         ok = false;
     }

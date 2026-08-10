@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -30,6 +31,55 @@ bool TestMlDecodeFromEncodedSymbols() {
         return false;
     }
 
+    return true;
+}
+
+bool TestCorrectsCorruptedInnerSymbol() {
+    constexpr uint16_t kSb1 = 0x145;
+    const auto encoded = lunanet::gateway2::BchEncode(kSb1);
+    std::vector<double> soft(encoded.size(), 0.0);
+    for (std::size_t i = 0; i < encoded.size(); ++i) {
+        soft[i] = encoded[i] == 0u ? +1.0 : -1.0;
+    }
+
+    constexpr std::size_t kCorruptedInnerSymbol = 17;
+    soft[kCorruptedInnerSymbol] = -soft[kCorruptedInnerSymbol];
+    const int decoded = lunanet::gateway5::DecodeSb1BchSoft(soft);
+    if (decoded != static_cast<int>(kSb1)) {
+        std::cerr << "FAIL [error-correction]: one inner-symbol error was not corrected\n";
+        return false;
+    }
+    return true;
+}
+
+bool TestCorrectsTwoCorruptedInnerSymbols() {
+    constexpr uint16_t kSb1 = 0x0D2;
+    const auto encoded = lunanet::gateway2::BchEncode(kSb1);
+    std::vector<double> soft(encoded.size(), 0.0);
+    for (std::size_t i = 0; i < encoded.size(); ++i) {
+        soft[i] = encoded[i] == 0u ? +1.0 : -1.0;
+    }
+    soft[11] = -soft[11];
+    soft[37] = -soft[37];
+
+    const auto decoded = lunanet::gateway5::DecodeSb1BchSoftDetailed(soft);
+    if (!decoded.decoded || decoded.value != static_cast<int>(kSb1) ||
+        decoded.normalized_correlation < 0.5 || decoded.normalized_margin < 0.05) {
+        std::cerr << "FAIL [two-error-correction]: decode or confidence mismatch\n";
+        return false;
+    }
+    return true;
+}
+
+bool TestRejectsAmbiguousErasures() {
+    const std::vector<double> erased(
+        static_cast<std::size_t>(lunanet::gateway5::kStage3Sb1SoftSymbols), 0.0);
+    const auto decoded = lunanet::gateway5::DecodeSb1BchSoftDetailed(erased);
+    if (decoded.decoded || decoded.value != -1 ||
+        lunanet::gateway5::DecodeSb1BchSoft(erased) != -1) {
+        std::cerr << "FAIL [erasure]: ambiguous all-zero SB1 was accepted\n";
+        return false;
+    }
     return true;
 }
 
@@ -97,6 +147,25 @@ bool TestPackInvalidSizeRejected() {
     return true;
 }
 
+bool TestRejectsInvalidValues() {
+    std::vector<double> soft(
+        static_cast<std::size_t>(lunanet::gateway5::kStage3Sb1SoftSymbols), 1.0);
+    soft[3] = std::numeric_limits<double>::quiet_NaN();
+    if (lunanet::gateway5::DecodeSb1BchSoft(soft) != -1) {
+        std::cerr << "FAIL [non-finite]: BCH decoder accepted NaN\n";
+        return false;
+    }
+
+    std::vector<uint8_t> bits(
+        static_cast<std::size_t>(lunanet::gateway5::kStage3Sb1SoftSymbols), 0u);
+    bits[3] = 2u;
+    if (lunanet::gateway5::PackBch52MsbFirst(bits).has_value()) {
+        std::cerr << "FAIL [non-binary]: BCH packer accepted value 2\n";
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 int main() {
@@ -104,6 +173,24 @@ int main() {
 
     if (TestMlDecodeFromEncodedSymbols()) {
         std::cout << "PASS: exhaustive ML decode recovers SB1=0x045 from 52 soft symbols\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestCorrectsCorruptedInnerSymbol()) {
+        std::cout << "PASS: soft BCH decode corrects one corrupted inner symbol\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestCorrectsTwoCorruptedInnerSymbols()) {
+        std::cout << "PASS: soft BCH decode corrects two corrupted inner symbols\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestRejectsAmbiguousErasures()) {
+        std::cout << "PASS: ambiguous all-zero SB1 soft data is rejected\n";
     } else {
         ok = false;
     }
@@ -123,6 +210,12 @@ int main() {
 
     if (TestPackInvalidSizeRejected()) {
         std::cout << "PASS: PackBch52MsbFirst rejects invalid input size via std::nullopt\n";
+    } else {
+        ok = false;
+    }
+
+    if (TestRejectsInvalidValues()) {
+        std::cout << "PASS: BCH APIs reject non-finite and non-binary values\n";
     } else {
         ok = false;
     }

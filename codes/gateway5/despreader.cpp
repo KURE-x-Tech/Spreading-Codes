@@ -15,6 +15,20 @@ DespreadResult DespreadAfsI(const std::vector<double>& chip_stream,
                              std::string* error_message) {
     DespreadResult result;
 
+    if (!std::isfinite(lock_threshold) || lock_threshold <= 0.0 ||
+        lock_threshold > 1.0) {
+        if (error_message) {
+            *error_message = "lock_threshold must be finite and in (0, 1]";
+        }
+        return result;
+    }
+    if (!std::all_of(chip_stream.begin(), chip_stream.end(), [](const double value) {
+            return std::isfinite(value);
+        })) {
+        if (error_message) *error_message = "chip_stream contains a non-finite value";
+        return result;
+    }
+
     if (chip_stream.size() < static_cast<std::size_t>(kDespreadChipsPerSymbol)) {
         if (error_message) {
             *error_message = "chip_stream shorter than one code period (" +
@@ -46,7 +60,7 @@ DespreadResult DespreadAfsI(const std::vector<double>& chip_stream,
     // (not signed) since the unknown data-bit sign only flips the overall
     // sign, not the magnitude, of a correctly-phased correlation.
     std::size_t best_phase = 0;
-    double best_abs_corr = -1.0;
+    double best_normalized_corr = -1.0;
 
     const std::size_t max_phase_exclusive =
         std::min(static_cast<std::size_t>(kDespreadChipsPerSymbol),
@@ -54,25 +68,30 @@ DespreadResult DespreadAfsI(const std::vector<double>& chip_stream,
 
     for (std::size_t phase = 0; phase < max_phase_exclusive; ++phase) {
         double corr = 0.0;
+        double window_energy = 0.0;
         for (int i = 0; i < kDespreadChipsPerSymbol; ++i) {
-            corr += chip_stream[phase + i] * code_bpsk[i];
+            const double sample = chip_stream[phase + i];
+            corr += sample * code_bpsk[i];
+            window_energy += sample * sample;
         }
-        const double abs_corr = std::fabs(corr);
-        if (abs_corr > best_abs_corr) {
-            best_abs_corr = abs_corr;
+        constexpr double kMinWindowEnergy = 1e-12;
+        const double denominator = std::sqrt(
+            static_cast<double>(kDespreadChipsPerSymbol) *
+            std::max(window_energy, kMinWindowEnergy));
+        const double normalized_corr = std::fabs(corr) / denominator;
+        if (normalized_corr > best_normalized_corr) {
+            best_normalized_corr = normalized_corr;
             best_phase = phase;
         }
     }
 
-    const double normalized_lock =
-        best_abs_corr / static_cast<double>(kDespreadChipsPerSymbol);
-    result.lock_correlation = normalized_lock;
+    result.lock_correlation = best_normalized_corr;
 
-    if (normalized_lock < lock_threshold) {
+    if (best_normalized_corr < lock_threshold) {
         if (error_message) {
             *error_message = "Failed to acquire code-phase lock for PRN " +
                 std::to_string(prn) + " (normalized correlation " +
-                std::to_string(normalized_lock) + " below threshold " +
+                std::to_string(best_normalized_corr) + " below threshold " +
                 std::to_string(lock_threshold) + ")";
         }
         return result;

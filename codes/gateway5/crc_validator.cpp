@@ -42,6 +42,13 @@ SubframeCrcVerdict ValidateSubframeCrc(const std::vector<uint8_t>& decoded_syste
         return verdict;
     }
 
+    for (std::size_t i = 0; i < decoded_systematic_bits.size(); ++i) {
+        if (decoded_systematic_bits[i] > 1u) {
+            verdict.error = "Non-binary systematic value at bit " + std::to_string(i);
+            return verdict;
+        }
+    }
+
     verdict.data_bits = verdict.total_bits - 24;
     if (verdict.data_bits < 0) {
         verdict.error = "Subframe too short for CRC split";

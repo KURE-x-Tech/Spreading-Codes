@@ -5,7 +5,7 @@ This document maps every testable requirement to its LSIS specification source, 
 ## How to Read This Matrix
 
 | Column | Meaning |
-|--------|---------|
+| -------- | --------- |
 | ID | Unique requirement identifier |
 | LSIS Ref | Section/table in LSIS-AFS Volume A |
 | Requirement | What you must implement |
@@ -30,7 +30,7 @@ Your submission **must** include ALL of the following or it receives 0 points:
 ### Section 1: Spreading Code Generation (Gateway 1)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | SC-1.1 | Sec 2.3.5, Table 9 | Generate Gold codes (2046 chips) for all 210 PRNs | All codes match Annex 3 hex references exactly | 1 | 5 |
 | SC-1.2 | Sec 2.3.5, Table 9 | Generate Weil primary codes (10230 chips) for all 210 PRNs | All codes match Annex 3 references exactly | 1 | 5 |
 | SC-1.3 | Sec 2.3.5, Table 9 | Generate Weil tertiary codes (1500 chips) for all 210 PRNs | All codes match Annex 3 references exactly | 1 | 5 |
@@ -46,7 +46,7 @@ Your submission **must** include ALL of the following or it receives 0 points:
 #### FEC Codes (Gateway 2)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | FEC-2.1 | Sec 2.4, Table 12 | BCH(51,8) encoder with generator polynomial 763 | Encodes 51-bit input to 52-symbol codewords; syndrome calculation verified | 2 | 3 |
 | FEC-2.2 | Sec 2.4, Table 12 | BCH(51,8) decoder via syndrome & Chien search | Decodes BCH codewords with t=2 error correction | 2 | 3 |
 | FEC-2.3 | Sec 2.4, Annex 1 | LDPC encoder (rate 1/2) for subframes 2, 3, 4 | Generates valid codewords; puncturing pattern correct | 2 | 3 |
@@ -62,7 +62,7 @@ Your submission **must** include ALL of the following or it receives 0 points:
 #### Message Framing (Gateway 3)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | MF-3.1 | Table 8 | Synchronization pattern (68 symbols) | Sync pattern matches specification; 68 symbols verified | 3 | 2 |
 | MF-3.2 | Table 14 | Subframe 1 builder (FID + TOI, BCH encoded) | Frame ID and Time Of Index encoded with BCH | 3 | 2 |
 | MF-3.3 | Table 18 | Subframe 2 builder (Clock & Ephemeris, LDPC encoded) | Clock data and ephemeris bits allocated correctly | 3 | 2 |
@@ -77,7 +77,7 @@ Your submission **must** include ALL of the following or it receives 0 points:
 ### Section 3: Baseband Signal Generation (Gateway 4)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | SG-4.1 | Sec 2.3, Table 7 | AFS-I modulator at 1.023 Mchip/s | Chip rate verified; BPSK modulation correct | 4 | 3 |
 | SG-4.2 | Sec 2.3, Table 7 | AFS-Q modulator at 5.115 Mchip/s | Chip rate verified; BPSK modulation correct | 4 | 3 |
 | SG-4.3 | Sec 2.3 | BPSK modulation (1 → -1.0, 0 → +1.0) | I/Q sample values verified | 4 | 2 |
@@ -90,13 +90,15 @@ Your submission **must** include ALL of the following or it receives 0 points:
 
 ### Section 4: Frame Synchronization & Decoding (Gateway 5)
 
-Current repository coverage note (2026-07):
+Current repository coverage note (2026-08-10):
 
-- Partially implemented: symbol extraction framing and LLR conversion helpers, plus sync-reference construction and unit tests.
-- Pending for full Gateway 5 completion: noisy-stream frame synchronization, de-spreading integration, LDPC decode-chain integration, and performance qualification (BER/sync-rate/decode-time).
+- Implemented: raw/standard I/Q import, AFS-I de-spreading, normalized noisy-stream synchronization, frame extraction, soft BCH/LDPC decode, soft deinterleaving, CRC-gated acceptance, CRC stripping, `goon decode`, and the Gateway 6 payload handoff.
+- Qualification: 9960/10000 sync detections at 0.1 dB with a 99.4819% one-sided 95% lower bound; 16/10000 false alarms with a 0.2406% upper bound; 0/1000 de-spread symbol errors at 0.1 dB; empirical 0/299,880 post-LDPC bit errors at 3 dB with 102/102 CRC-accepted frames; maximum 10 LDPC iterations and worst measured three-subframe decode of 70.8 ms.
+- Operating envelope: known PRN, AFS-I, integer chip timing, integer-multiple sample rate, and AWGN soft decisions. Full-frame operation below the qualified 3 dB point and external IQ interoperability remain Gateway 7 qualification work.
+- Usage and implementation details: `docs/G5/GATEWAY5_DECODER.md`.
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | FSD-5.1 | Table 8, Sec 2.3 | Frame sync detection via sync pattern | Detects sync pattern > 99% at SNR > 0 dB | 5 | 3 |
 | FSD-5.2 | Sec 2.3 | Symbol extraction from I/Q samples | Symbols aligned to detected sync pattern | 5 | 2 |
 | FSD-5.3 | Sec 2.3 | De-spreading using known codes | Symbols de-spread correctly using PRN codes | 5 | 2 |
@@ -112,7 +114,7 @@ Current repository coverage note (2026-07):
 ### Section 5: Message Parsing (Gateway 6)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | MP-6.1 | Sec 2.5, Table 14 | Subframe 1 parser (FID + TOI extraction) | Frame ID and TOI extracted correctly | 6 | 2 |
 | MP-6.2 | Sec 2.5, Table 18 | Subframe 2 parser (Clock & Ephemeris) | WN, ITOW, signal health extracted | 6 | 2 |
 | MP-6.3 | Sec 2.5, Table 19 | Subframe 3 parser (Variable data routing) | Data routed to correct message types | 6 | 2 |
@@ -125,7 +127,7 @@ Current repository coverage note (2026-07):
 ### Section 6: Integration & Validation (Gateway 7)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | IV-7.1 | Sec 1-5 | Round-trip testing (encode → signal → decode → verify) | Original data recovered with 100% accuracy | 7 | 4 |
 | IV-7.2 | Annex 3 | Validation against reference codes (all 210 PRNs) | Comparison to hex references shows 100% match | 7 | 3 |
 | IV-7.3 | Table 11 | Test coverage (12 interim codes) | All test codes from Table 11 working | 7 | 2 |
@@ -138,7 +140,7 @@ Current repository coverage note (2026-07):
 ### Section 7: Documentation & Examples (Gateway 8)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | DOC-8.1 | — | Setup & build instructions | Any developer can build from scratch | 8 | 2 |
 | DOC-8.2 | — | API documentation | All public functions/classes documented | 8 | 2 |
 | DOC-8.3 | — | Usage examples | Examples demonstrate key features working | 8 | 2 |
@@ -150,7 +152,7 @@ Current repository coverage note (2026-07):
 ### Section 8: Code Quality & Testing (All Gateways)
 
 | ID | LSIS Ref | Requirement | Acceptance Criteria | Gateway | Points |
-|----|----------|-------------|-------------------|---------|--------|
+| ---- | ---------- | ------------- | ------------------- | --------- | -------- |
 | QA-9.1 | — | Modular architecture | Clear separation of concerns; easy to test/extend | All | 2 |
 | QA-9.2 | — | Unit test coverage | > 90% of major components tested | All | 2 |
 | QA-9.3 | — | Code style & documentation | Consistent formatting; comments where needed | All | 1 |
@@ -162,7 +164,7 @@ Current repository coverage note (2026-07):
 ## Scoring Summary
 
 | Section | Category | Points |
-|---------|----------|--------|
+| --------- | ---------- | -------- |
 | 1 | Spreading Code Generation | 32 |
 | 2 | FEC & Message Framing | 40 |
 | 3 | Baseband Signal Generation | 15 |
@@ -180,7 +182,7 @@ Current repository coverage note (2026-07):
 ## Gateways at a Glance
 
 | Gateway | Name | Key Requirements | Points | Min Viable? |
-|---------|------|------------------|--------|------------|
+| --------- | ------ | ------------------ | -------- | ------------ |
 | 0 | Design & Architecture | Architecture document, testing strategy | — | ✓ (implicit) |
 | 1 | Spreading Codes | 210 PRN codes, Table 11 test codes | 32 | ✓ |
 | 2 | FEC Encoding | BCH, LDPC, CRC, interleaver | 15 | ✓ |

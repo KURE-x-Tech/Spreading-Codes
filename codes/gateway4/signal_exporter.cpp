@@ -1,11 +1,13 @@
 #include "signal_exporter.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#include <iterator>
 #include <limits>
+#include <new>
+#include <stdexcept>
 
 namespace lunanet::gateway4 {
 
@@ -72,14 +74,125 @@ double ReadF64Le(const unsigned char* p) {
 constexpr char kIqMagic[8] = {'L', 'S', 'I', 'S', 'I', 'Q', '\0', '\0'};
 constexpr std::size_t kIqHeaderSize = 128;
 constexpr char kSampleFormatFloat32[16] = {'f', 'l', 'o', 'a', 't', '3', '2'};
+constexpr std::uint64_t kMaxIqFileBytes = 512ull * 1024ull * 1024ull;
+constexpr std::size_t kBytesPerIqSample = 2u * sizeof(float);
+constexpr uint32_t kMinPrn = 1u;
+constexpr uint32_t kMaxPrn = 210u;
+
+bool ValidateSignalForExport(const IqSignal& signal,
+                             const std::string& output_path,
+                             std::string* error_message) {
+    if (signal.i.empty() || signal.i.size() != signal.q.size()) {
+        if (error_message) *error_message = "Signal is empty or I/Q length mismatch";
+        return false;
+    }
+    const std::uint64_t sample_count = static_cast<std::uint64_t>(signal.i.size());
+    if (sample_count > kMaxIqFileBytes / kBytesPerIqSample) {
+        if (error_message) {
+            *error_message = "I/Q output exceeds the " +
+                std::to_string(kMaxIqFileBytes) + "-byte safety limit: " + output_path;
+        }
+        return false;
+    }
+    for (std::size_t index = 0; index < signal.i.size(); ++index) {
+        if (!std::isfinite(signal.i[index]) || !std::isfinite(signal.q[index])) {
+            if (error_message) {
+                *error_message = "Non-finite I/Q value at sample " +
+                    std::to_string(index);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ValidatePayloadSize(std::streamoff byte_count,
+                         const std::string& input_path,
+                         std::size_t* out_sample_count,
+                         std::string* error_message) {
+    if (byte_count <= 0) {
+        if (error_message) *error_message = "I/Q sample payload is empty: " + input_path;
+        return false;
+    }
+    if (static_cast<std::uint64_t>(byte_count) > kMaxIqFileBytes) {
+        if (error_message) {
+            *error_message = "I/Q file exceeds the " +
+                std::to_string(kMaxIqFileBytes) + "-byte safety limit: " + input_path;
+        }
+        return false;
+    }
+    if (byte_count % static_cast<std::streamoff>(kBytesPerIqSample) != 0) {
+        if (error_message) {
+            *error_message = "I/Q payload length is not a multiple of " +
+                std::to_string(kBytesPerIqSample) + " bytes: " + input_path;
+        }
+        return false;
+    }
+
+    const auto sample_count = static_cast<std::uint64_t>(
+        byte_count / static_cast<std::streamoff>(kBytesPerIqSample));
+    if (sample_count > static_cast<std::uint64_t>(std::vector<float>().max_size())) {
+        if (error_message) *error_message = "I/Q file is too large to load safely: " + input_path;
+        return false;
+    }
+    *out_sample_count = static_cast<std::size_t>(sample_count);
+    return true;
+}
+
+bool ReadIqSamples(std::ifstream& in,
+                   std::size_t sample_count,
+                   int sample_rate_hz,
+                   const std::string& input_path,
+                   IqSignal* out_signal,
+                   std::string* error_message) {
+    IqSignal signal;
+    signal.sample_rate_hz = sample_rate_hz;
+    try {
+        signal.i.reserve(sample_count);
+        signal.q.reserve(sample_count);
+    } catch (const std::bad_alloc&) {
+        if (error_message) *error_message = "Insufficient memory for I/Q file: " + input_path;
+        return false;
+    } catch (const std::length_error&) {
+        if (error_message) *error_message = "I/Q sample count exceeds vector limits: " + input_path;
+        return false;
+    }
+
+    std::array<unsigned char, kBytesPerIqSample> bytes{};
+    for (std::size_t sample_index = 0; sample_index < sample_count; ++sample_index) {
+        in.read(reinterpret_cast<char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+        if (!in) {
+            if (error_message) {
+                *error_message = "Truncated I/Q pair at sample " +
+                    std::to_string(sample_index) + ": " + input_path;
+            }
+            return false;
+        }
+
+        const float i_sample = ReadLittleEndianFloat(bytes.data());
+        const float q_sample = ReadLittleEndianFloat(bytes.data() + sizeof(float));
+        if (!std::isfinite(i_sample) || !std::isfinite(q_sample)) {
+            if (error_message) {
+                *error_message = "Non-finite I/Q value at sample " +
+                    std::to_string(sample_index) + ": " + input_path;
+            }
+            return false;
+        }
+        signal.i.push_back(i_sample);
+        signal.q.push_back(q_sample);
+    }
+
+    *out_signal = std::move(signal);
+    return true;
+}
 
 }  // namespace
 
 bool ExportIqBinary(const IqSignal& signal,
                     const std::string& output_path,
                     std::string* error_message) {
-    if (signal.i.empty() || signal.i.size() != signal.q.size()) {
-        if (error_message) *error_message = "Signal is empty or I/Q length mismatch";
+    if (!ValidateSignalForExport(signal, output_path, error_message)) {
         return false;
     }
 
@@ -102,11 +215,39 @@ bool ExportIqBinary(const IqSignal& signal,
     return true;
 }
 
+bool ImportIqBinary(const std::string& input_path,
+                    int sample_rate_hz,
+                    IqSignal* out_signal,
+                    std::string* error_message) {
+    if (out_signal == nullptr) {
+        if (error_message) *error_message = "I/Q output must not be null";
+        return false;
+    }
+    if (sample_rate_hz <= 0) {
+        if (error_message) *error_message = "Sample rate must be > 0";
+        return false;
+    }
+
+    std::ifstream in(input_path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        if (error_message) *error_message = "Failed to open: " + input_path;
+        return false;
+    }
+
+    std::size_t sample_count = 0;
+    if (!ValidatePayloadSize(in.tellg(), input_path, &sample_count, error_message)) {
+        return false;
+    }
+
+    in.seekg(0, std::ios::beg);
+    return ReadIqSamples(
+        in, sample_count, sample_rate_hz, input_path, out_signal, error_message);
+}
+
 bool ExportIqCsv(const IqSignal& signal,
                  const std::string& output_path,
                  std::string* error_message) {
-    if (signal.i.empty() || signal.i.size() != signal.q.size()) {
-        if (error_message) *error_message = "Signal is empty or I/Q length mismatch";
+    if (!ValidateSignalForExport(signal, output_path, error_message)) {
         return false;
     }
 
@@ -133,12 +274,15 @@ bool ExportIqBinaryStandard(const IqSignal& signal,
                            uint32_t prn,
                            const std::string& output_path,
                            std::string* error_message) {
-    if (signal.i.empty() || signal.i.size() != signal.q.size()) {
-        if (error_message) *error_message = "Signal is empty or I/Q length mismatch";
+    if (!ValidateSignalForExport(signal, output_path, error_message)) {
         return false;
     }
     if (signal.sample_rate_hz <= 0) {
         if (error_message) *error_message = "Signal has an invalid sample rate";
+        return false;
+    }
+    if (prn < kMinPrn || prn > kMaxPrn) {
+        if (error_message) *error_message = "PRN must be in the range 1-210";
         return false;
     }
 
@@ -176,11 +320,31 @@ bool ImportIqBinaryStandard(const std::string& input_path,
                            IqSignal* out_signal,
                            IqFileHeader* out_header,
                            std::string* error_message) {
-    std::ifstream in(input_path, std::ios::binary);
+    if (out_signal == nullptr) {
+        if (error_message) *error_message = "I/Q output must not be null";
+        return false;
+    }
+
+    std::ifstream in(input_path, std::ios::binary | std::ios::ate);
     if (!in) {
         if (error_message) *error_message = "Failed to open: " + input_path;
         return false;
     }
+
+    const std::streamoff total_bytes = in.tellg();
+    if (total_bytes < static_cast<std::streamoff>(kIqHeaderSize)) {
+        if (error_message) *error_message = "File is shorter than the " +
+            std::to_string(kIqHeaderSize) + "-byte header: " + input_path;
+        return false;
+    }
+    const std::streamoff payload_bytes =
+        total_bytes - static_cast<std::streamoff>(kIqHeaderSize);
+    std::size_t num_samples = 0;
+    if (!ValidatePayloadSize(payload_bytes, input_path, &num_samples, error_message)) {
+        return false;
+    }
+
+    in.seekg(0, std::ios::beg);
 
     std::vector<unsigned char> header(kIqHeaderSize);
     in.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(kIqHeaderSize));
@@ -236,43 +400,39 @@ bool ImportIqBinaryStandard(const std::string& input_path,
         if (error_message) *error_message = "Header declares an invalid sample rate: " + input_path;
         return false;
     }
+    if (parsed.prn < kMinPrn || parsed.prn > kMaxPrn) {
+        if (error_message) *error_message = "Header declares an invalid PRN: " + input_path;
+        return false;
+    }
+    if (!std::isfinite(parsed.duration_sec) || parsed.duration_sec <= 0.0) {
+        if (error_message) *error_message = "Header declares an invalid duration: " + input_path;
+        return false;
+    }
 
-    std::vector<unsigned char> payload((std::istreambuf_iterator<char>(in)),
-                                       std::istreambuf_iterator<char>());
-    constexpr std::size_t kBytesPerSample = 2 * sizeof(float);  // I and Q
-    if (payload.size() % kBytesPerSample != 0) {
-        if (error_message) *error_message = "Sample payload length is not a multiple of " +
-            std::to_string(kBytesPerSample) + " bytes (malformed I/Q pair): " + input_path;
+    // Cross-check the recovered sample count against the header's declared
+    // duration -- catches a file truncated exactly on an I/Q pair boundary.
+    // Half a sample absorbs decimal rounding without admitting a missing pair.
+    const double expected_samples = parsed.duration_sec * parsed.sample_rate_hz;
+    if (!std::isfinite(expected_samples) ||
+        std::fabs(static_cast<double>(num_samples) - expected_samples) >= 0.5) {
+        if (error_message) *error_message = "Sample count (" + std::to_string(num_samples) +
+            ") does not match header's duration_sec * sample_rate_hz (~" +
+            std::to_string(expected_samples) + "): " + input_path;
         return false;
     }
 
     IqSignal signal;
-    signal.sample_rate_hz = static_cast<int>(parsed.sample_rate_hz);
-    const std::size_t num_samples = payload.size() / kBytesPerSample;
-
-    // Cross-check the recovered sample count against the header's declared
-    // duration -- catches a file truncated exactly on an I/Q pair boundary,
-    // which would otherwise import "successfully" as a silently shortened
-    // signal. A one-sample tolerance absorbs rounding in duration_sec.
-    if (parsed.duration_sec > 0.0) {
-        const double expected_samples = parsed.duration_sec * parsed.sample_rate_hz;
-        if (std::fabs(static_cast<double>(num_samples) - expected_samples) > 1.0) {
-            if (error_message) *error_message = "Sample count (" + std::to_string(num_samples) +
-                ") does not match header's duration_sec * sample_rate_hz (~" +
-                std::to_string(expected_samples) + "): " + input_path;
-            return false;
-        }
-    }
-
-    signal.i.reserve(num_samples);
-    signal.q.reserve(num_samples);
-    for (std::size_t n = 0; n < num_samples; ++n) {
-        signal.i.push_back(ReadLittleEndianFloat(&payload[n * kBytesPerSample]));
-        signal.q.push_back(ReadLittleEndianFloat(&payload[n * kBytesPerSample + sizeof(float)]));
+    if (!ReadIqSamples(in,
+                       num_samples,
+                       static_cast<int>(parsed.sample_rate_hz),
+                       input_path,
+                       &signal,
+                       error_message)) {
+        return false;
     }
 
     if (out_header) *out_header = parsed;
-    if (out_signal) *out_signal = std::move(signal);
+    *out_signal = std::move(signal);
     return true;
 }
 

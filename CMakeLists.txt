@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(LunaNetGateway VERSION 1.1.0 LANGUAGES CXX)
+project(LunaNetGateway VERSION 1.2.6 LANGUAGES CXX)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/lunanet/version.h
+    @ONLY
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -81,6 +87,7 @@ target_include_directories(lunanet_gateway4 PUBLIC
 )
 
 set(GATEWAY5_SOURCES
+    codes/gateway5/frame_decoder.cpp
     codes/gateway5/frame_synchronizer.cpp
     codes/gateway5/sync_detector.cpp
     codes/gateway5/despreader.cpp
@@ -94,6 +101,7 @@ set(GATEWAY5_SOURCES
 )
 
 set(GATEWAY5_HEADERS
+    codes/gateway5/frame_decoder.h
     codes/gateway5/frame_synchronizer.h
     codes/gateway5/sync_detector.h
     codes/gateway5/despreader.h
@@ -319,12 +327,53 @@ add_test(
     COMMAND gateway5_crc_validation_test
 )
 
+add_executable(gateway5_frame_decoder_test
+    codes/gateway5/frame_decoder_test.cpp
+)
+
+target_link_libraries(gateway5_frame_decoder_test PRIVATE
+    lunanet_gateway5
+)
+
+set_target_properties(gateway5_frame_decoder_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway5_frame_decoder_test
+    COMMAND gateway5_frame_decoder_test
+)
+
+add_executable(gateway5_ber_benchmark
+    codes/gateway5/ber_benchmark.cpp
+)
+
+target_link_libraries(gateway5_ber_benchmark PRIVATE
+    lunanet_gateway5
+)
+
+set_target_properties(gateway5_ber_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway5_ber_qualification
+    COMMAND gateway5_ber_benchmark
+)
+
+set_tests_properties(gateway5_ber_qualification PROPERTIES
+    LABELS "gateway5;qualification;long"
+    TIMEOUT 120
+)
+
 set(GATEWAY6_SOURCES
     codes/gateway6/subframe2_parser.cpp
+    codes/gateway6/subframe3_parser.cpp
 )
 
 set(GATEWAY6_HEADERS
     codes/gateway6/subframe2_parser.h
+    codes/gateway6/subframe3_parser.h
 )
 
 add_library(lunanet_gateway6 STATIC ${GATEWAY6_SOURCES} ${GATEWAY6_HEADERS})
@@ -356,6 +405,48 @@ add_test(
     COMMAND gateway6_subframe2_parser_test
 )
 
+add_executable(gateway6_subframe3_parser_test
+    codes/gateway6/subframe3_parser_test.cpp
+)
+
+target_link_libraries(gateway6_subframe3_parser_test PRIVATE
+    lunanet_gateway6
+    lunanet_gateway3
+)
+
+target_include_directories(gateway6_subframe3_parser_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway3
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway6
+)
+
+set_target_properties(gateway6_subframe3_parser_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway6_subframe3_parser_test
+    COMMAND gateway6_subframe3_parser_test
+)
+
+add_executable(gateway5_gateway6_handoff_test
+    codes/gateway6/gateway5_handoff_test.cpp
+)
+
+target_link_libraries(gateway5_gateway6_handoff_test PRIVATE
+    lunanet_gateway5
+    lunanet_gateway6
+)
+
+set_target_properties(gateway5_gateway6_handoff_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway5_gateway6_handoff_test
+    COMMAND gateway5_gateway6_handoff_test
+)
+
 set(GATEWAY1_SOURCES
     codes/spreading_codes.cpp
     codes/gateway1/spreading_config.cpp
@@ -379,6 +470,9 @@ target_include_directories(${LIBRARY_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/codes
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway1
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway2
+)
+target_include_directories(${LIBRARY_NAME} PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 target_compile_definitions(${LIBRARY_NAME} PRIVATE LUNANET_BUILDING_DLL)
 target_link_libraries(${LIBRARY_NAME} PRIVATE lunanet_gateway2)
@@ -419,21 +513,65 @@ set_target_properties(test_engine PROPERTIES
 add_executable(goon codes/lsis_cli.cpp)
 target_link_libraries(goon PRIVATE
     ${LIBRARY_NAME}
-    lunanet_gateway2
-    lunanet_gateway3
-    lunanet_gateway4
+    lunanet_gateway5
 )
 target_include_directories(goon PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/codes
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway3
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway4
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway5
 )
 set_target_properties(goon PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib"
 )
 
+if(APPLE)
+    set_target_properties(goon PROPERTIES
+        INSTALL_RPATH "@loader_path/../lib"
+    )
+elseif(UNIX)
+    set_target_properties(goon PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../lib"
+    )
+endif()
+
 enable_testing()
+add_test(
+    NAME goon_version_test
+    COMMAND goon version
+)
+set_tests_properties(goon_version_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "^goon ${PROJECT_VERSION}"
+)
+
+add_test(
+    NAME goon_cli_smoke_test
+    COMMAND ${CMAKE_COMMAND}
+        -DGOON_EXECUTABLE=$<TARGET_FILE:goon>
+        -DEXPECTED_VERSION=${PROJECT_VERSION}
+        -DWORK_DIR=${CMAKE_BINARY_DIR}/goon-cli-smoke
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/goon_cli_smoke.cmake
+)
+set_tests_properties(goon_cli_smoke_test PROPERTIES
+    LABELS "cli;qa"
+)
+
+add_test(
+    NAME goon_installed_package_test
+    COMMAND ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DINSTALL_CONFIG=$<CONFIG>
+        -DGOON_FILENAME=$<TARGET_FILE_NAME:goon>
+        -DEXPECTED_VERSION=${PROJECT_VERSION}
+        -DSMOKE_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/cmake/goon_cli_smoke.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/goon_installed_package_smoke.cmake
+)
+set_tests_properties(goon_installed_package_test PROPERTIES
+    LABELS "cli;qa;install"
+    RUN_SERIAL TRUE
+    TIMEOUT 120
+)
+
 add_test(
     NAME gateway1_validation
     COMMAND test_engine
@@ -470,4 +608,30 @@ install(TARGETS ${LIBRARY_NAME} goon
 
 install(FILES ${GATEWAY1_HEADERS}
     DESTINATION include/lunanet
+)
+
+install(FILES config/spreading_codes_config.ini
+    DESTINATION share/lunanet/config
+)
+
+install(DIRECTORY docs/spec_tables/
+    DESTINATION share/lunanet/docs/spec_tables
+    FILES_MATCHING
+    PATTERN "*.csv"
+    PATTERN "._*" EXCLUDE
+)
+
+install(DIRECTORY Validation/annex3/txt/
+    DESTINATION share/lunanet/Validation/annex3/txt
+    FILES_MATCHING
+    PATTERN "*.txt"
+    PATTERN "generated" EXCLUDE
+    PATTERN "._*" EXCLUDE
+)
+
+install(DIRECTORY Validation/annex3/csv/
+    DESTINATION share/lunanet/Validation/annex3/csv
+    FILES_MATCHING
+    PATTERN "*.csv"
+    PATTERN "._*" EXCLUDE
 )

@@ -3,29 +3,51 @@
 // Subcommands:
 //   generate-codes  — Generate all 210 Gold primary spreading codes as hex.
 //   encode          — Encode a navigation frame and optionally modulate to I/Q.
+//   decode          — Decode a navigation frame from an I/Q signal file.
 //   version         — Print version string.
 //
 // Conforms to the CLI contract specified in the CCSDS 235.1 & LSIS-AFS
 // Mid-Project Workshop programme.
 
 #include <algorithm>
+#include <array>
+#include <cerrno>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
+
 #include "spreading_codes.h"
+#include "gateway1/spreading_config.h"
 #include "gateway3/frame_assembler.h"
 #include "gateway3/frame_exporter.h"
 #include "gateway4/bpsk_modulator.h"
 #include "gateway4/iq_generator.h"
 #include "gateway4/signal_config.h"
 #include "gateway4/signal_exporter.h"
+#include "gateway5/frame_decoder.h"
 
 namespace {
+
+namespace fs = std::filesystem;
+
+fs::path g_executable_dir;
 
 // ── Argument helpers ────────────────────────────────────────────────────────
 
@@ -33,6 +55,7 @@ struct Args {
     int argc;
     char** argv;
     int pos = 0;
+    bool parse_error = false;
 };
 
 bool HasNext(const Args& a) { return a.pos < a.argc; }
@@ -65,13 +88,35 @@ bool GetString(Args& a, const char* flag, std::string& out) {
 bool GetInt(Args& a, const char* flag, int& out) {
     std::string s;
     if (GetString(a, flag, s)) {
+        errno = 0;
         char* end = nullptr;
-        long v = std::strtol(s.c_str(), &end, 10);
-        if (end == s.c_str() || *end != '\0') {
+        const long value = std::strtol(s.c_str(), &end, 10);
+        if (errno == ERANGE || end == s.c_str() || *end != '\0' ||
+            value < static_cast<long>(std::numeric_limits<int>::min()) ||
+            value > static_cast<long>(std::numeric_limits<int>::max())) {
             std::cerr << "error: invalid integer for " << flag << ": " << s << "\n";
-            return false;
+            a.parse_error = true;
+            return true;
         }
-        out = static_cast<int>(v);
+        out = static_cast<int>(value);
+        return true;
+    }
+    return false;
+}
+
+bool GetDouble(Args& a, const char* flag, double& out) {
+    std::string s;
+    if (GetString(a, flag, s)) {
+        errno = 0;
+        char* end = nullptr;
+        const double value = std::strtod(s.c_str(), &end);
+        if (errno == ERANGE || end == s.c_str() || *end != '\0' ||
+            !std::isfinite(value)) {
+            std::cerr << "error: invalid number for " << flag << ": " << s << "\n";
+            a.parse_error = true;
+            return true;
+        }
+        out = value;
         return true;
     }
     return false;
@@ -79,33 +124,91 @@ bool GetInt(Args& a, const char* flag, int& out) {
 
 // ── Config path resolution ──────────────────────────────────────────────────
 
-std::string FindConfigPath(const std::string& explicit_path) {
-    if (!explicit_path.empty()) return explicit_path;
+fs::path NativeExecutablePath() {
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768u, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length > 0 && length < buffer.size()) {
+        return fs::path(std::wstring(buffer.data(), length));
+    }
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    if (size > 0) {
+        std::vector<char> buffer(size, '\0');
+        if (_NSGetExecutablePath(buffer.data(), &size) == 0) {
+            return fs::path(buffer.data());
+        }
+    }
+#elif defined(__linux__)
+    std::vector<char> buffer(4096u, '\0');
+    while (buffer.size() <= 1024u * 1024u) {
+        const ssize_t length = readlink(
+            "/proc/self/exe", buffer.data(), buffer.size());
+        if (length < 0) break;
+        if (static_cast<std::size_t>(length) < buffer.size()) {
+            return fs::path(std::string(buffer.data(), static_cast<std::size_t>(length)));
+        }
+        buffer.resize(buffer.size() * 2u);
+    }
+#endif
+    return {};
+}
 
-    // Walk up from the executable (or cwd) looking for config/spreading_codes_config.ini
-    namespace fs = std::filesystem;
-    fs::path search = fs::current_path();
-    for (int depth = 0; depth < 5; ++depth) {
-        fs::path candidate = search / "config" / "spreading_codes_config.ini";
-        if (fs::exists(candidate)) return candidate.string();
+void InitializeExecutableDir(const char* argv0) {
+    fs::path executable = NativeExecutablePath();
+    if (executable.empty() && argv0 != nullptr && *argv0 != '\0') {
+        executable = fs::path(argv0);
+    }
+    if (executable.empty()) return;
+
+    std::error_code error;
+    executable = fs::absolute(executable, error);
+    if (error) return;
+    const fs::path canonical = fs::weakly_canonical(executable, error);
+    g_executable_dir = (error ? executable : canonical).parent_path();
+}
+
+std::string FindResourcePath(const fs::path& source_relative,
+                             const fs::path& install_relative,
+                             const std::string& fallback,
+                             bool directory) {
+    fs::path search = g_executable_dir;
+    for (int depth = 0; !search.empty() && depth < 6; ++depth) {
+        const std::array<fs::path, 2> candidates = {
+            search / install_relative,
+            search / source_relative,
+        };
+        for (const fs::path& candidate : candidates) {
+            std::error_code error;
+            const bool found = directory
+                ? fs::is_directory(candidate, error)
+                : fs::is_regular_file(candidate, error);
+            if (found && !error) return candidate.string();
+        }
         if (!search.has_parent_path() || search == search.parent_path()) break;
         search = search.parent_path();
     }
-    return "config/spreading_codes_config.ini";
+    return fallback;
+}
+
+std::string FindConfigPath(const std::string& explicit_path) {
+    if (!explicit_path.empty()) return explicit_path;
+    return FindResourcePath(
+        fs::path("config") / "spreading_codes_config.ini",
+        fs::path("share") / "lunanet" / "config" / "spreading_codes_config.ini",
+        "config/spreading_codes_config.ini",
+        false);
 }
 
 std::string FindAnnex3CsvDir(const std::string& explicit_path) {
     if (!explicit_path.empty()) return explicit_path;
-
-    namespace fs = std::filesystem;
-    fs::path search = fs::current_path();
-    for (int depth = 0; depth < 5; ++depth) {
-        fs::path candidate = search / "Validation" / "annex3" / "csv";
-        if (fs::is_directory(candidate)) return candidate.string();
-        if (!search.has_parent_path() || search == search.parent_path()) break;
-        search = search.parent_path();
-    }
-    return "Validation/annex3/csv";
+    return FindResourcePath(
+        fs::path("Validation") / "annex3" / "csv",
+        fs::path("share") / "lunanet" / "Validation" / "annex3" / "csv",
+        "Validation/annex3/csv",
+        true);
 }
 
 // ── Hex string to bytes ─────────────────────────────────────────────────────
@@ -337,6 +440,10 @@ int CmdEncode(Args& a) {
         return 1;
     }
 
+    if (a.parse_error) {
+        return 1;
+    }
+
     if (format.empty()) {
         std::cerr << "error: --format is required (frame or iq32)\n";
         PrintEncodeUsage();
@@ -481,6 +588,221 @@ int CmdEncode(Args& a) {
     return 0;
 }
 
+// ── Subcommand: decode ──────────────────────────────────────────────────────
+
+void PrintDecodeUsage() {
+    std::cerr
+        << "usage: goon decode --input <path> [--input-format <raw|standard>]\n"
+        << "       [--prn <N>] [--rate <hz>] [--noise-variance <value>]\n"
+        << "       [--psr-threshold <value>] [--peak-rms-threshold <value>]\n"
+        << "       [--normalized-peak-threshold <value>]\n"
+        << "       [--lock-threshold <value>]\n"
+        << "       [--max-iterations <1-50>] [--alpha <value>]\n"
+        << "       [--output <path>] [--config <path>] [--csv-dir <path>]\n";
+}
+
+std::string BitsToHex(const std::vector<uint8_t>& bits) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve((bits.size() + 3u) / 4u);
+    for (std::size_t start = 0; start < bits.size(); start += 4u) {
+        uint8_t nibble = 0u;
+        for (std::size_t offset = 0; offset < 4u; ++offset) {
+            nibble <<= 1u;
+            if (start + offset < bits.size()) {
+                nibble |= static_cast<uint8_t>(bits[start + offset] & 1u);
+            }
+        }
+        out.push_back(kHex[nibble]);
+    }
+    return out;
+}
+
+std::size_t HexPaddingBits(const std::vector<uint8_t>& bits) {
+    return (4u - (bits.size() % 4u)) % 4u;
+}
+
+void WriteDecodeJson(std::ostream& out,
+                     int prn,
+                     const lunanet::gateway5::FrameDecodeResult& decoded) {
+    out << std::boolalpha << std::fixed << std::setprecision(3)
+        << "{\n"
+        << "  \"accepted\": " << decoded.accepted << ",\n"
+        << "  \"prn\": " << prn << ",\n"
+        << "  \"fid\": " << static_cast<int>(decoded.fid) << ",\n"
+        << "  \"toi\": " << static_cast<int>(decoded.toi) << ",\n"
+        << "  \"code_phase\": " << decoded.code_phase << ",\n"
+        << "  \"frame_offset\": " << decoded.sync.frame_offset << ",\n"
+        << "  \"lock_correlation\": " << decoded.lock_correlation << ",\n"
+        << "  \"sync_psr\": " << decoded.sync.psr << ",\n"
+        << "  \"bch_normalized_correlation\": "
+        << decoded.sb1_bch.normalized_correlation << ",\n"
+        << "  \"bch_normalized_margin\": " << decoded.sb1_bch.normalized_margin << ",\n"
+        << "  \"decode_ms\": " << decoded.elapsed_ms << ",\n"
+        << "  \"ldpc_iterations\": {\"sb2\": " << decoded.sb2_ldpc.iterations
+        << ", \"sb3\": " << decoded.sb3_ldpc.iterations
+        << ", \"sb4\": " << decoded.sb4_ldpc.iterations << "},\n"
+        << "  \"crc_valid\": {\"sb2\": " << decoded.crc.sb2.valid
+        << ", \"sb3\": " << decoded.crc.sb3.valid
+        << ", \"sb4\": " << decoded.crc.sb4.valid << "},\n"
+        << "  \"sb2_bit_count\": " << decoded.sb2_payload.size() << ",\n"
+        << "  \"sb3_bit_count\": " << decoded.sb3_payload.size() << ",\n"
+        << "  \"sb4_bit_count\": " << decoded.sb4_payload.size() << ",\n"
+        << "  \"sb2_hex_padding_bits\": " << HexPaddingBits(decoded.sb2_payload) << ",\n"
+        << "  \"sb3_hex_padding_bits\": " << HexPaddingBits(decoded.sb3_payload) << ",\n"
+        << "  \"sb4_hex_padding_bits\": " << HexPaddingBits(decoded.sb4_payload) << ",\n"
+        << "  \"sb2_hex\": \"" << BitsToHex(decoded.sb2_payload) << "\",\n"
+        << "  \"sb3_hex\": \"" << BitsToHex(decoded.sb3_payload) << "\",\n"
+        << "  \"sb4_hex\": \"" << BitsToHex(decoded.sb4_payload) << "\"\n"
+        << "}\n";
+}
+
+int CmdDecode(Args& a) {
+    std::string input;
+    std::string input_format = "raw";
+    std::string output;
+    std::string config_path;
+    std::string csv_dir;
+    int prn = -1;
+    int rate = lunanet::gateway4::kAfsIChipRateHz;
+    int max_iterations = 50;
+    bool prn_was_set = false;
+    bool rate_was_set = false;
+    double noise_variance = 1.0;
+    double psr_threshold = lunanet::gateway5::kDefaultSyncPsrThreshold;
+    double peak_rms_threshold = lunanet::gateway5::kDefaultSyncPeakToRmsThreshold;
+    double normalized_peak_threshold =
+        lunanet::gateway5::kDefaultSyncNormalizedPeakThreshold;
+    double lock_threshold = 0.5;
+    double alpha = 0.75;
+
+    while (HasNext(a)) {
+        if (GetString(a, "--input", input)) continue;
+        if (GetString(a, "--input-format", input_format)) continue;
+        if (GetInt(a, "--prn", prn)) {
+            prn_was_set = true;
+            continue;
+        }
+        if (GetInt(a, "--rate", rate)) {
+            rate_was_set = true;
+            continue;
+        }
+        if (GetDouble(a, "--noise-variance", noise_variance)) continue;
+        if (GetDouble(a, "--psr-threshold", psr_threshold)) continue;
+        if (GetDouble(a, "--peak-rms-threshold", peak_rms_threshold)) continue;
+        if (GetDouble(a, "--normalized-peak-threshold", normalized_peak_threshold)) continue;
+        if (GetDouble(a, "--lock-threshold", lock_threshold)) continue;
+        if (GetInt(a, "--max-iterations", max_iterations)) continue;
+        if (GetDouble(a, "--alpha", alpha)) continue;
+        if (GetString(a, "--output", output)) continue;
+        if (GetString(a, "--config", config_path)) continue;
+        if (GetString(a, "--csv-dir", csv_dir)) continue;
+        std::cerr << "error: unknown option: " << Peek(a) << "\n";
+        PrintDecodeUsage();
+        return 1;
+    }
+
+    if (a.parse_error) {
+        return 1;
+    }
+
+    if (input.empty()) {
+        std::cerr << "error: --input is required\n";
+        PrintDecodeUsage();
+        return 1;
+    }
+    if (input_format != "raw" && input_format != "standard") {
+        std::cerr << "error: --input-format must be 'raw' or 'standard'\n";
+        return 1;
+    }
+
+    std::string error;
+    lunanet::gateway4::IqSignal signal;
+    if (input_format == "standard") {
+        lunanet::gateway4::IqFileHeader header;
+        if (!lunanet::gateway4::ImportIqBinaryStandard(input, &signal, &header, &error)) {
+            std::cerr << "error: failed to import standardized I/Q: " << error << "\n";
+            return 1;
+        }
+        if (!prn_was_set) {
+            prn = static_cast<int>(header.prn);
+        } else if (header.prn != static_cast<uint32_t>(prn)) {
+            std::cerr << "error: --prn does not match standardized I/Q metadata\n";
+            return 1;
+        }
+        if (rate_was_set && signal.sample_rate_hz != rate) {
+            std::cerr << "error: --rate does not match standardized I/Q metadata\n";
+            return 1;
+        }
+    } else {
+        if (!lunanet::gateway4::ImportIqBinary(input, rate, &signal, &error)) {
+            std::cerr << "error: failed to import headerless IQ32: " << error << "\n";
+            return 1;
+        }
+    }
+
+    if (prn < 1 || prn > lunanet::gateway1::kMaxPrns) {
+        std::cerr << "error: --prn must be 1-" << lunanet::gateway1::kMaxPrns
+                  << " (required for raw IQ32)\n";
+        return 1;
+    }
+
+    config_path = FindConfigPath(config_path);
+    lunanet::gateway1::SpreadingSpecTables spreading_tables;
+    lunanet::gateway1::Annex3Paths annex3_paths;
+    if (!lunanet::gateway1::LoadSpreadingConfig(
+            config_path, &spreading_tables, &annex3_paths, &error)) {
+        std::cerr << "error: failed to load spreading config: " << error << "\n";
+        return 1;
+    }
+
+    csv_dir = FindAnnex3CsvDir(csv_dir);
+    lunanet::gateway5::DecoderMatrices matrices;
+    if (!lunanet::gateway5::LoadDecoderMatrices(csv_dir, &matrices, &error)) {
+        std::cerr << "error: failed to load decoder matrices: " << error << "\n";
+        return 1;
+    }
+
+    lunanet::gateway5::FrameDecoderConfig decoder_config;
+    decoder_config.prn = prn;
+    decoder_config.symbol_noise_variance = noise_variance;
+    decoder_config.sync_psr_threshold = psr_threshold;
+    decoder_config.sync_peak_to_rms_threshold = peak_rms_threshold;
+    decoder_config.sync_normalized_peak_threshold = normalized_peak_threshold;
+    decoder_config.lock_threshold = lock_threshold;
+    decoder_config.max_ldpc_iterations = max_iterations;
+    decoder_config.ldpc_alpha = alpha;
+
+    const auto decoded = lunanet::gateway5::DecodeAfsIIqSignal(
+        signal, spreading_tables, matrices, decoder_config);
+    if (!decoded.accepted) {
+        std::cerr << "error: frame decode failed: " << decoded.error << "\n"
+                  << "  code_phase=" << decoded.code_phase
+                  << " lock=" << decoded.lock_correlation
+                  << " frame_offset=" << decoded.sync.frame_offset
+                  << " psr=" << decoded.sync.psr
+                  << " elapsed_ms=" << decoded.elapsed_ms << "\n";
+        return 2;
+    }
+
+    if (output.empty()) {
+        WriteDecodeJson(std::cout, prn, decoded);
+    } else {
+        std::ofstream out(output);
+        if (!out) {
+            std::cerr << "error: failed to open decode output: " << output << "\n";
+            return 1;
+        }
+        WriteDecodeJson(out, prn, decoded);
+        if (!out) {
+            std::cerr << "error: failed to write decode output: " << output << "\n";
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 // ── Usage ───────────────────────────────────────────────────────────────────
 
 void PrintUsage(const char* prog) {
@@ -490,13 +812,15 @@ void PrintUsage(const char* prog) {
         << "commands:\n"
         << "  generate-codes  Generate 210 spreading codes (Gold/Weil/Tertiary)\n"
         << "  encode          Encode navigation frame / generate I/Q signal\n"
+        << "  decode          Decode a navigation frame from an I/Q signal\n"
         << "  version         Print version\n\n"
         << "examples:\n"
         << "  " << prog << " generate-codes --output codes.txt\n"
         << "  " << prog << " generate-codes --codes gold --output gold_codes.txt\n"
         << "  " << prog << " generate-codes --codes all  --output generated/\n"
         << "  " << prog << " encode --format frame --prn 1 --fid 0 --toi 42 --wn 100 --itow 250\n"
-        << "  " << prog << " encode --format iq32  --prn 1 --fid 0 --toi 42 --wn 100 --itow 250\n";
+        << "  " << prog << " encode --format iq32  --prn 1 --fid 0 --toi 42 --wn 100 --itow 250\n"
+        << "  " << prog << " decode --input signal.iq32 --prn 1\n";
 }
 
 }  // namespace
@@ -504,6 +828,8 @@ void PrintUsage(const char* prog) {
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 int main(int argc, char** argv) {
+    InitializeExecutableDir(argc > 0 ? argv[0] : nullptr);
+
     if (argc < 2) {
         PrintUsage(argv[0]);
         return 1;
@@ -523,6 +849,10 @@ int main(int argc, char** argv) {
 
     if (std::strcmp(cmd, "encode") == 0) {
         return CmdEncode(a);
+    }
+
+    if (std::strcmp(cmd, "decode") == 0) {
+        return CmdDecode(a);
     }
 
     if (std::strcmp(cmd, "help") == 0 || std::strcmp(cmd, "--help") == 0 ||

@@ -1,0 +1,7 @@
+#pragma once
+
+namespace lunanet::build_info {
+
+inline constexpr char kVersion[] = "@PROJECT_VERSION@";
+
+}  // namespace lunanet::build_info

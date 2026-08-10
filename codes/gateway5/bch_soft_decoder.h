@@ -10,6 +10,15 @@ namespace lunanet::gateway5 {
 
 constexpr int kStage3Sb1SoftSymbols = 52;
 constexpr int kStage3InnerSoftSymbols = 51;
+constexpr double kDefaultBchMinNormalizedCorrelation = 0.5;
+constexpr double kDefaultBchMinNormalizedMargin = 0.05;
+
+struct BchSoftDecodeResult {
+	bool decoded = false;
+	int value = -1;
+	double normalized_correlation = 0.0;
+	double normalized_margin = 0.0;
+};
 
 /**
  * Gateway 5 Stage 3: exhaustive ML BCH soft-decode for SB1.
@@ -31,6 +40,13 @@ constexpr int kStage3InnerSoftSymbols = 51;
  * @return Decoded 9-bit FID+TOI (bits[8:7]=FID, bits[6:0]=TOI), or -1 on
  *         invalid input size.
  */
+BchSoftDecodeResult DecodeSb1BchSoftDetailed(
+	const std::vector<double>& sb1_soft,
+	double min_normalized_correlation = kDefaultBchMinNormalizedCorrelation,
+	double min_normalized_margin = kDefaultBchMinNormalizedMargin);
+
+// Compatibility wrapper returning the decoded value or -1 when confidence
+// checks reject the input.
 int DecodeSb1BchSoft(const std::vector<double>& sb1_soft);
 
 /**

@@ -1,6 +1,6 @@
 # Gateway Todo Tracker
 
-Last updated: 2026-07-17
+Last updated: 2026-08-10
 
 ## Status Snapshot
 
@@ -8,30 +8,35 @@ Last updated: 2026-07-17
 - Gateway 2: Complete for encode pipeline (BCH/CRC/LDPC encode/interleaver).
 - Gateway 3: Complete frame assembly pipeline.
 - Gateway 4: Complete baseband generation pipeline.
-- Gateway 5: Partial foundations implemented (sync reference, frame slicing, LLR utility, standalone tests).
-- Gateway 6: Not started in this repository.
+- Gateway 5: Integrated AFS-I receiver implemented and qualified for the documented software profile.
+- Gateway 6: SB2/SB3 parsing implemented with a tested Gateway 5 payload handoff.
 
-## Gateway 5 Priority Backlog
+## Gateway 5 Completion Evidence
 
 ### In place
 
-- Sync reference symbol construction from fixed 68-symbol SP.
-- 6000-symbol frame region extraction (SP=68, SB1=52, interleaved=5880).
-- LLR helper with LSIS sign convention.
-- Standalone tests: `gateway5_frame_sync_test`, `gateway5_symbol_extractor_test`.
+- `goon decode` for headerless IQ32 and standardized LSISIQ files.
+- I-channel normalization and Gold-code de-spreading with code-phase acquisition.
+- Normalized noisy/offset frame synchronization over the fixed 68-symbol SP.
+- 6000-symbol extraction, BCH decode, soft deinterleaving, LDPC decode, and CRC gate.
+- CRC-stripped 1176/846/846-bit Gateway 6 payload contract.
+- Full-frame and Gateway 5-to-6 navigation handoff tests.
+- Sync qualification: 9960/10000 detections at 0.1 dB with a 99.4819% one-sided 95% lower bound; 16/10000 false alarms with a 0.2406% upper bound.
+- De-spread qualification: 0/1000 symbol errors at 0.1 dB.
+- BER qualification: empirical 0/299,880 post-LDPC bit errors at 3 dB with 102/102 CRC-accepted frames.
+- Decode qualification: fewer than 50 LDPC iterations and under one second.
 
-### Remaining for Gateway 5 completion
+### Residual Gateway 7 Qualification
 
-- Implement robust frame synchronization detector over noisy and offset streams.
-- Integrate de-spreading path to produce soft symbols from received I/Q.
-- Integrate LDPC decode chain for SB2/SB3/SB4 and connect CRC gates.
-- Add full-frame decode acceptance/rejection flow and telemetry.
-- Add BER and sync-reliability benchmarking for target thresholds.
+- Produce BER-vs-SNR and frame-acceptance curves across a broader SNR sweep.
+- Improve the current full-frame LDPC operating point below the qualified 3 dB profile.
+- Validate external recordings and cross-team IQ interoperability.
+- Add RF-front-end features only if competition scope expands to Doppler,
+  carrier tracking, sub-chip timing, automatic PRN search, or AFS-Q acquisition.
 
 ## Cross-Gateway Next Steps
 
-- Gateway 5 -> Gateway 6 handoff: decoded bit payload contracts for parser inputs.
-- Gateway 6 implementation: SB1-SB4 field parsing and ToT computation.
+- Gateway 6 implementation: complete SB4 parsing and ToT computation.
 - End-to-end round-trip qualification: encode -> channel/noise -> decode -> parse.
 
 ## External References
