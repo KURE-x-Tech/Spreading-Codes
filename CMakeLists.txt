@@ -367,18 +367,48 @@ set_tests_properties(gateway5_ber_qualification PROPERTIES
 )
 
 set(GATEWAY6_SOURCES
+    codes/gateway6/subframe1_parser.cpp
     codes/gateway6/subframe2_parser.cpp
     codes/gateway6/subframe3_parser.cpp
+    codes/gateway6/subframe4_parser.cpp
 )
 
 set(GATEWAY6_HEADERS
+    codes/gateway6/subframe1_parser.h
     codes/gateway6/subframe2_parser.h
     codes/gateway6/subframe3_parser.h
+    codes/gateway6/subframe4_parser.h
 )
 
 add_library(lunanet_gateway6 STATIC ${GATEWAY6_SOURCES} ${GATEWAY6_HEADERS})
 target_include_directories(lunanet_gateway6 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/codes
+)
+
+add_executable(gateway6_subframe1_parser_test
+    codes/gateway6/subframe1_parser_test.cpp
+)
+
+target_link_libraries(gateway6_subframe1_parser_test PRIVATE
+    lunanet_gateway6
+    lunanet_gateway3
+    lunanet_gateway2
+)
+
+target_include_directories(gateway6_subframe1_parser_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway2
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway3
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway6
+)
+
+set_target_properties(gateway6_subframe1_parser_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway6_subframe1_parser_test
+    COMMAND gateway6_subframe1_parser_test
 )
 
 add_executable(gateway6_subframe2_parser_test
@@ -427,6 +457,30 @@ set_target_properties(gateway6_subframe3_parser_test PROPERTIES
 add_test(
     NAME gateway6_subframe3_parser_test
     COMMAND gateway6_subframe3_parser_test
+)
+
+add_executable(gateway6_subframe4_parser_test
+    codes/gateway6/subframe4_parser_test.cpp
+)
+
+target_link_libraries(gateway6_subframe4_parser_test PRIVATE
+    lunanet_gateway6
+    lunanet_gateway3
+)
+
+target_include_directories(gateway6_subframe4_parser_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway3
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway6
+)
+
+set_target_properties(gateway6_subframe4_parser_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_test(
+    NAME gateway6_subframe4_parser_test
+    COMMAND gateway6_subframe4_parser_test
 )
 
 add_executable(gateway5_gateway6_handoff_test
@@ -514,12 +568,14 @@ add_executable(goon codes/lsis_cli.cpp)
 target_link_libraries(goon PRIVATE
     ${LIBRARY_NAME}
     lunanet_gateway5
+    lunanet_gateway6
 )
 target_include_directories(goon PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/codes
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway3
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway4
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway5
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway6
 )
 set_target_properties(goon PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

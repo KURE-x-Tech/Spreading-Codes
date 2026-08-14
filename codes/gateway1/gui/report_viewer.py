@@ -16,6 +16,7 @@ from tkinter import ttk
 from pathlib import Path
 
 from report_parser import ReportData, parse_junit_xml, load_markdown
+from mission_console import MissionConsole
 from signal_panel import SignalGenerationPanel
 
 # ── Colour Palette (loaded from gui/config/theme.json) ───────────────────────
@@ -140,9 +141,13 @@ class ReportViewer(tk.Tk):
         self._setup_styles()
         self._build_header()
 
-        # ── Tabbed interface: Test Reports + Signal Generation ────────────
+        # ── Tabbed interface: Operations, reports, and signal generation ──
         notebook = ttk.Notebook(self)
         notebook.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 4))
+
+        mission_tab = MissionConsole(
+            notebook, palette=_T, repo_root=Path(__file__).resolve().parents[3])
+        notebook.add(mission_tab, text="  Mission Console  ")
 
         reports_tab = ttk.Frame(notebook, style="Dark.TFrame")
         notebook.add(reports_tab, text="  Test Reports  ")

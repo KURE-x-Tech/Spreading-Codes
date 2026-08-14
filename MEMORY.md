@@ -37,6 +37,9 @@
 - `codes/gateway5/ldpc_decoder.h/.cpp` - Saturated normalized min-sum SB2-SB4 decoder.
 - `codes/gateway5/crc_validator.h/.cpp` - CRC-24Q frame acceptance gate.
 - `codes/gateway5/symbol_extractor.h/.cpp` - Frame region slicing (SP/SB1/interleaved) + LLR conversion helper.
+- `codes/gateway6/subframe1_parser.h/.cpp` - Subframe 1 parser for FID (0..3) and TOI (0..99) per Table 13 & Table 14.
+- `codes/gateway6/subframe2_parser.h/.cpp` - Subframe 2 parser for WN, ITOW, TOI, and CED/Health.
+- `codes/gateway6/subframe3_parser.h/.cpp` - Subframe 3 variable-data router and almanac decoder.
 - `codes/c_api.h/.cpp` - C-linkage DLL shim for ctypes/FFI access.
 - `codes/python/lunanet.py` - Zero-dependency Python wrapper over the C API.
 - `codes/python/iq_generator.py` - BPSK(1) I/Q signal generator (float32 binary + CSV export).

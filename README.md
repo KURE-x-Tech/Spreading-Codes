@@ -229,7 +229,7 @@ Reports are written to `Validation/reports/YYYY-MM-DD/HH-MM-SS.{md,xml}` for ful
 python codes/gateway1/gui/report_viewer.py
 ```
 
-Dark-themed Tkinter viewer with color-coded pass/fail rows, suite/status filtering, and auto-discovery of timestamped reports.
+Dark-themed Tkinter viewer with color-coded pass/fail rows, suite/status filtering, and auto-discovery of timestamped reports. Its **Mission Console** tab provides an operator-oriented Gateway 1-6 workflow: assign a PRN, prepare a BCH/CRC/LDPC-protected 12-second uplink, transmit it to an orbital node, receive it through Gateway 5, and display the Gateway 6 parsed navigation fields. Build the local `goon` executable first; the console invokes it for the real G2-G6 signal path.
 
 ---
 
