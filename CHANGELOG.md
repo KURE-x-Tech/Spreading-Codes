@@ -4,6 +4,10 @@
 
 ### Added
 
+- **Gateway 6 Subframe Parsing**: Dedicated SB1, SB2, SB3, and SB4 parser components validate and label the CRC-stripped Gateway 5 payloads. SB1 extracts FID/TOI; SB2 extracts WN/ITOW/TOI; SB3 routes known and unknown message types; SB4 preserves its LNSP-specific type and payload.
+- **All-Subframe CLI Decode**: `goon decode` now sends its accepted Gateway 5 output through all Gateway 6 parsers and emits a structured `subframes` object alongside compatibility telemetry and payload fields.
+- **Gateway 5-to-6 Handoff Coverage**: The integration test verifies round-trip parsing of all four subframes, including SB4 type and payload preservation.
+- **Mission Console GUI**: The report-viewer application now includes an operator-oriented Gateway 1-6 Mission Console. It generates a PRN identity, invokes the real encode/decode CLI pipeline, simulates Earth-to-orbit transmission, and displays parsed navigation data without exposing raw bitstreams.
 - **Self-Contained CLI Installation**: CMake installs `goon`, its relocatable shared library, runtime configuration, specification tables, Annex references, and LDPC matrices. Installed commands can run outside the repository working directory.
 - **CLI Version Regression Test**: `goon_version_test` verifies that CLI output matches the CMake project version.
 - **LSIS-AFS CLI Tool**: New `goon` executable (`codes/lsis_cli.cpp`) conforming to the workshop interop CLI contract. Subcommands: `generate-codes` (210 Gold PRNs -> hex), `encode --format frame` (data -> 6000-byte frame), `encode --format iq32` (full encode -> interleaved float32 I/Q signal), `decode` (I/Q -> CRC-gated payload JSON), and `version`.

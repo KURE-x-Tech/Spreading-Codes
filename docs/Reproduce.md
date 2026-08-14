@@ -262,7 +262,7 @@ ctest --test-dir build -R '^gateway3_' --output-on-failure
 ctest --test-dir build -R '^gateway4_' --output-on-failure
 ctest --test-dir build -R '^gateway5_' --output-on-failure
 ctest --test-dir build -R '^gateway6_' --output-on-failure
-ctest --test-dir build -R '^gateway6_subframe3_parser_test$' --output-on-failure
+ctest --test-dir build -R '^gateway6_subframe[1-4]_parser_test$' --output-on-failure
 ```
 
 Add `-C Release` to these commands for a Visual Studio build.
@@ -270,7 +270,8 @@ Add `-C Release` to these commands for a Visual Studio build.
 The Gateway 5 CTest group covers frame synchronization, sync detection,
 despreading, symbol extraction, BCH decoding, deinterleaving, LDPC decoding,
 CRC validation, complete frame decoding, and the Gateway 5-to-6 navigation
-handoff. Gateway 6 also has focused Subframe 2 and Subframe 3 parser tests.
+handoff. Gateway 6 has focused Subframe 1-4 parser tests; the integration handoff
+checks that Gateway 5's accepted SB1-SB4 output parses in Gateway 6.
 
 The Gateway 5 CTest filter includes the longer deterministic BER qualification.
 Run it directly when only the benchmark report is needed:
@@ -301,8 +302,10 @@ Generate and decode the headerless workshop IQ32 format:
 ```
 
 `decoded.json` contains FID/TOI, acquisition and LDPC telemetry, CRC verdicts,
-and CRC-stripped SB2/SB3/SB4 payloads. See `docs/G5/GATEWAY5_DECODER.md` for the
-standardized input format, API usage, stage behavior, and operating limits.
+and a `subframes` object with the Gateway 6 parsed SB1-SB4 results. Compatibility
+fields retain the CRC-stripped SB2/SB3/SB4 payloads. See
+`docs/G5/GATEWAY5_DECODER.md` for the standardized input format, API usage,
+stage behavior, and operating limits.
 
 ### Validation Report Engine
 
@@ -336,8 +339,10 @@ test directly:
 ./build/bin/gateway5_crc_validation_test
 ./build/bin/gateway5_frame_decoder_test
 ./build/bin/gateway5_gateway6_handoff_test
+./build/bin/gateway6_subframe1_parser_test
 ./build/bin/gateway6_subframe2_parser_test
 ./build/bin/gateway6_subframe3_parser_test
+./build/bin/gateway6_subframe4_parser_test
 ```
 
 For Windows, add `.exe` and use either `build\bin\Release\` for Visual Studio or

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(LunaNetGateway VERSION 1.2.6 LANGUAGES CXX)
+project(LunaNetGateway VERSION 1.2.7 LANGUAGES CXX)
 
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/version.h.in

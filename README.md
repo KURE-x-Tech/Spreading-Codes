@@ -2,7 +2,7 @@
 
 Implementation of the LunaNet Augmented Forward Signal (AFS) spreading code generators and forward error correction (FEC) encoders, built to the **LSIS-AFS Volume A** specification.
 
-Current status: Gateways 1-5 are implemented in the main pipeline. Gateway 5 provides `goon decode`, CRC-gated payload output, reproducible sync/SER/BER qualification, and a tested Gateway 6 handoff. Gateway 6 parsing is in progress.
+Current status: Gateways 1-6 are implemented in the main pipeline. Gateway 5 provides `goon decode`, CRC-gated payload output, reproducible sync/SER/BER qualification, and a tested Gateway 6 handoff. Gateway 6 parses and labels all four CRC-stripped subframes; Time of Transmission remains pending because the LSIS LRT epoch is unresolved.
 
 ---
 
@@ -47,9 +47,17 @@ Current status: Gateways 1-5 are implemented in the main pipeline. Gateway 5 pro
 - **Robust Synchronization** - Normalized matched correlation with PSR, peak-to-RMS, and normalized-peak confidence gates recovers noisy, offset frames.
 - **Soft FEC Decode** - Exhaustive BCH correlation and real-Annex-matrix normalized min-sum LDPC decoding preserve soft decisions and report convergence telemetry.
 - **Gateway 6 Contract** - Accepted frames expose CRC-stripped SB2/SB3/SB4 payloads of 1176/846/846 bits; a cross-gateway test parses SB2 time fields and an SB3 almanac directly.
-- **Decode CLI** - `goon decode` accepts headerless IQ32 or standardized LSISIQ input and emits JSON payloads plus acquisition/FEC telemetry.
+- **Decode CLI** - `goon decode` accepts headerless IQ32 or standardized LSISIQ input and emits acquisition/FEC telemetry plus a structured Gateway 6 `subframes` result.
 - **Qualification** - Sync: 9960/10000 at 0.1 dB with a 99.4819% one-sided 95% lower bound; de-spread SER: 0/1000 at 0.1 dB; empirical post-LDPC BER: 0/299,880 bits at 3 dB with 102/102 CRC-accepted frames; worst measured three-subframe decode: 70.8 ms.
 - **Usage and Limits** - See [docs/G5/GATEWAY5_DECODER.md](docs/G5/GATEWAY5_DECODER.md).
+
+### Gateway 6 - Message Parsing
+
+- **Subframe 1** - Validates and extracts the 2-bit FID and 7-bit TOI fields from the BCH-decoded SB1 word.
+- **Subframe 2** - Extracts WN, ITOW, TOI, provisional CED values, and health status from the CRC-stripped data field.
+- **Subframe 3** - Routes the dynamic message type; the provisional orbit-almanac profile is decoded and unrecognized types remain available as validated payloads.
+- **Subframe 4** - Validates and labels the dynamic network-access type and payload. Message-specific layouts remain LNSP SISICD-defined.
+- **CLI and Handoff** - `goon decode` calls all four parsers only after Gateway 5 BCH/LDPC/CRC acceptance; the Gateway 5-to-6 integration test verifies all four handoffs.
 
 ### Cross-Language Bridge
 
@@ -81,7 +89,7 @@ Spreading-Codes/
 │   │   ├── weil_code_generator.*   #   Weil primary/tertiary
 │   │   ├── tiered_code_generator.* #   AFS-Q three-tier construction
 │   │   ├── spreading_config.*      #   Table loading & configuration
-│   │   └── gui/                    #   Tkinter report viewer
+│   │   └── gui/                    #   Tkinter report viewer + Mission Console
 │   ├── gateway2/                   # FEC encoding
 │   │   ├── bch_codec.*             #   BCH(51,8) encoder + soft decoder
 │   │   ├── crc24.*                 #   CRC-24Q
@@ -109,6 +117,11 @@ Spreading-Codes/
 │   │   ├── deinterleaver.*         #   60x98 soft deinterleaver
 │   │   ├── ldpc_decoder.*          #   SB2-SB4 normalized min-sum decoder
 │   │   └── crc_validator.*         #   CRC-24Q frame acceptance gate
+│   ├── gateway6/                   # Parsed navigation subframes
+│   │   ├── subframe1_parser.*       #   FID and TOI parser
+│   │   ├── subframe2_parser.*       #   WN, ITOW, CED, and health parser
+│   │   ├── subframe3_parser.*       #   Dynamic message router
+│   │   └── subframe4_parser.*       #   Dynamic network-access parser
 │   ├── testing/                    # Test framework
 │   │   ├── test_reporter.*         #   Markdown + JUnit XML output
 │   │   ├── test_validators.*       #   Validation primitives
