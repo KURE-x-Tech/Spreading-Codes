@@ -145,8 +145,8 @@ cd /tmp
 ## Run the Software
 
 The main application is `goon`. It can generate spreading-code families,
-assemble a 6000-symbol navigation frame, or generate an interleaved float32 I/Q
-signal.
+assemble a 6000-symbol navigation frame, generate an interleaved float32 I/Q
+signal, or decode a supported AFS-I IQ32 recording through Gateway 6.
 
 Set a convenient executable variable for the examples below.
 
@@ -228,7 +228,7 @@ export end to end. A full 12-second signal is much larger than a frame file.
 ```
 
 The accepted ranges are PRN 1-210, FID 0-3, TOI 0-99, WN 0-8191, and ITOW
-0-511. Run `goon --help` for the command summary.
+0-503. Run `goon --help` for the command summary.
 
 ## Run Validation
 
