@@ -501,6 +501,18 @@ add_test(
     COMMAND gateway5_gateway6_handoff_test
 )
 
+add_executable(gateway7_validation_test
+    codes/gateway7/validation.cpp
+)
+target_link_libraries(gateway7_validation_test PRIVATE
+    lunanet_gateway2
+    lunanet_gateway5
+)
+target_include_directories(gateway7_validation_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway2
+    ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway5
+)
 set(GATEWAY1_SOURCES
     codes/spreading_codes.cpp
     codes/gateway1/spreading_config.cpp
