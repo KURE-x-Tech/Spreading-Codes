@@ -66,17 +66,9 @@ int main(){
     constexpr int k_trials = 102;
     std::vector<QualificationResult> results;
     std::vector<double> snr_db_values{
-    1.0,
-    1.1,
-    1.2,
-    1.3,
-    1.4,
-    1.5,
-    1.6,
-    1.7,
-    1.8,
-    1.9,
-    2.0
+    -5.0, -4.0, -3.0, -2.0, -1.0, 0.0,
+    1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0,
+    3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0
 };
     const std::filesystem::path repo_root =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
@@ -182,93 +174,17 @@ int main(){
         && crc_result.frame_accepted) {
             result.accepted_frames += 1;
         }
-            if (trial == 0) {
-                std::cout << "\nSNR: " << snr_db << " dB\n";
-                std::cout << "Noise variance :"<< noise_variance << std::endl;
-                //results.push_back(result);
-
-                std::cout << "SB2: " << sb2.size()
-                        << " -> " << sb2_encoded.size() << " -> "
-                        << sb2_llrs.size()
-                        << " LLRs\n";
-
-                std::cout << "SB3: " << sb3.size()
-                        << " -> " << sb3_encoded.size() << " -> "
-                        << sb3_llrs.size()
-                        << " LLRs\n";
-
-                std::cout << "SB4: " << sb4.size()
-                            << " -> " << sb4_encoded.size() << " -> "
-                            << sb4_llrs.size()
-                            << " LLRs\n";
-                std::cout << "SB2 encoded first 5: ";
-                for (std::size_t i = 0; i < 5; ++i) {
-                    std::cout << static_cast<int>(sb2_encoded[i]) << " ";
-                }
-                std::cout << '\n';
-
-                std::cout << "SB2 LLR first 5: ";
-                for (std::size_t i = 0; i < 5; ++i) {
-                    std::cout << sb2_llrs[i] << " ";
-                }
-                std::cout << '\n';
-                std::cout << "SB3 encoded first 5: ";
-                for (std::size_t i = 0; i < 5; ++i) {
-                    std::cout << static_cast<int>(sb3_encoded[i]) << " ";
-                }
-                std::cout << '\n';
-
-                std::cout << "SB3 LLR first 5: ";
-                for (std::size_t i = 0; i < 5; ++i) {
-                    std::cout << sb3_llrs[i] << " ";
-                }
-                std::cout << '\n';
-                std::cout << "SB4 encoded first 5: ";
-                for (std::size_t i = 0; i < 5; ++i) {
-                    std::cout << static_cast<int>(sb4_encoded[i]) << " ";
-                }
-                std::cout << '\n';
-
-                std::cout << "SB4 LLR first 5: ";
-                for (std::size_t i = 0; i < 5; ++i) {
-                    std::cout << sb4_llrs[i] << " ";
-                }
-                std::cout << '\n';
-
-                std::cout << "SB2 decoded: "
-                << sb2_decoded.decoded_data_bits.size()
-                << " bits\n";
-                std::cout << "SB3 decoded: "
-                << sb3_decoded.decoded_data_bits.size()
-                << " bits\n";
-                std::cout << "SB4 decoded: "
-                << sb4_decoded.decoded_data_bits.size()
-                << " bits\n";
-
-                std::cout << "SB2 iterations: "
-                << sb2_decoded.iterations << '\n';
-                std::cout << "SB3 iterations: "
-                << sb3_decoded.iterations << '\n';
-                std::cout << "SB4 iterations: "
-                << sb4_decoded.iterations << '\n';
-
-                std::cout << "SB2 bit errors: " << bit_errors_sb2 << '\n';
-                std::cout << "SB3 bit errors: " << bit_errors_sb3 << '\n';
-                std::cout << "SB4 bit errors: " << bit_errors_sb4 << '\n';
-
-                std::cout << "SB2 converged: "<< sb2_decoded.converged << '\n';
-                std::cout << "SB3 converged: "<< sb3_decoded.converged << '\n';
-                std::cout << "SB4 converged: "<< sb4_decoded.converged << '\n';
-                std::cout << "CRC accepted: "<< crc_result.frame_accepted << '\n';
-                std::cout << "Frame decode time: " << frame_ms << " ms\n";
-            }
-        }
+    }
+        std::cout << "\nSNR: " << snr_db << " dB\n";
         result.ber_result = static_cast<double>(result.bit_errors)/ static_cast<double>(result.total_bits);
         std::cout << "Total bits: " << result.total_bits << '\n';
         std::cout << "Bit errors: " << result.bit_errors << '\n';
         std::cout << "BER: " << result.ber_result << '\n';
         result.acceptance_rate = static_cast<double>(result.accepted_frames) / static_cast<double>(k_trials);
         std::cout << "Acceptance rate: " << result.acceptance_rate << '\n';
+        std::cout << "Accepted frames: "
+          << result.accepted_frames
+          << "/" << k_trials << '\n';
         result.average_iterations = static_cast<double>(result.total_iterations)
         / static_cast<double>(k_trials * 3);
         std::cout << "Average iterations: "
@@ -321,8 +237,13 @@ for (const QualificationResult& result : results) {
 
               << '\n';
 }
-    const std::filesystem::path output_csv =
-    repo_root / "gateway7_snr_results.csv";
+    const std::filesystem::path output_dir =
+    repo_root / "Validation" / "generated" / "gateway7";
+
+std::filesystem::create_directories(output_dir);
+
+const std::filesystem::path output_csv =
+    output_dir / "gateway7_snr_results.csv";
 
 std::ofstream csv_file(output_csv);
 
@@ -358,7 +279,6 @@ for (const QualificationResult& result : results) {
 }
 
 csv_file.close();
-
 std::cout << "\nCSV written to: "
           << output_csv << '\n';
     return 0;

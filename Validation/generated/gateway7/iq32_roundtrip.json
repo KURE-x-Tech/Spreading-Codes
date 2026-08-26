@@ -1,0 +1,30 @@
+{
+  "accepted": true,
+  "prn": 1,
+  "fid": 0,
+  "toi": 42,
+  "code_phase": 0,
+  "frame_offset": 0,
+  "lock_correlation": 1.000,
+  "sync_psr": 1.889,
+  "bch_normalized_correlation": 1.000,
+  "bch_normalized_margin": 0.745,
+  "decode_ms": 150.962,
+  "subframes": {
+    "sb1": {"fid": 0, "toi": 42},
+    "sb2": {"wn": 100, "itow": 250, "toi": 42},
+    "sb3": {"type": 0, "payload_bit_count": 842},
+    "sb4": {"type": 0, "payload_bit_count": 842}
+  },
+  "ldpc_iterations": {"sb2": 2, "sb3": 2, "sb4": 2},
+  "crc_valid": {"sb2": true, "sb3": true, "sb4": true},
+  "sb2_bit_count": 1176,
+  "sb3_bit_count": 846,
+  "sb4_bit_count": 846,
+  "sb2_hex_padding_bits": 0,
+  "sb3_hex_padding_bits": 2,
+  "sb4_hex_padding_bits": 2,
+  "sb2_hex": "0323e952aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sb3_hex": "05555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555554",
+  "sb4_hex": "05555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555554"
+}

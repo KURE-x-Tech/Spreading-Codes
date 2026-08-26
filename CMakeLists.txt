@@ -508,6 +508,15 @@ target_link_libraries(gateway7_validation_test PRIVATE
     lunanet_gateway2
     lunanet_gateway5
 )
+add_test(
+    NAME gateway7_snr_sweep
+    COMMAND gateway7_validation_test
+)
+
+set_tests_properties(gateway7_snr_sweep PROPERTIES
+    LABELS "gateway7;long"
+    TIMEOUT 600
+)
 target_include_directories(gateway7_validation_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/codes
     ${CMAKE_CURRENT_SOURCE_DIR}/codes/gateway2
