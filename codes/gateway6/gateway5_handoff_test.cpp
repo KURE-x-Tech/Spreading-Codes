@@ -125,6 +125,13 @@ int main()
         std::cerr << "FAIL [SB2 fields]: navigation time fields changed at handoff\n";
         return 1;
     }
+    const uint64_t expected_tot =
+        lunanet::gateway6::ComputeTimeOfTransmissionSeconds(kWeek, kItow, kToi);
+    if (sb2.time_of_transmission_seconds != expected_tot)
+    {
+        std::cerr << "FAIL [SB2 ToT]: relative time of transmission changed at handoff\n";
+        return 1;
+    }
 
     lunanet::gateway6::Subframe3Data sb3;
     if (!lunanet::gateway6::ParseSubframe3(decoded.sb3_payload, &sb3, &error))
@@ -162,6 +169,6 @@ int main()
     std::cout << "PASS: Gateway 5 CRC-stripped SB2 payload parses in Gateway 6\n";
     std::cout << "PASS: Gateway 5 CRC-stripped SB3 almanac parses in Gateway 6\n";
     std::cout << "PASS: Gateway 5 CRC-stripped SB4 payload parses in Gateway 6\n";
-    std::cout << "PASS: navigation fields survive encode/decode/parser handoff\n";
+    std::cout << "PASS: navigation fields and relative ToT survive encode/decode/parser handoff\n";
     return 0;
 }

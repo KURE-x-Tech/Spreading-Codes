@@ -9,7 +9,7 @@
   "sync_psr": 1.889,
   "bch_normalized_correlation": 1.000,
   "bch_normalized_margin": 0.745,
-  "decode_ms": 161.660,
+  "decode_ms": 159.111,
   "subframes": {
     "sb1": {"fid": 0, "toi": 42},
     "sb2": {"wn": 100, "itow": 250, "toi": 42},

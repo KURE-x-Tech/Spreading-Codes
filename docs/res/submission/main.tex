@@ -1,0 +1,406 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{hyperref} % Required for hyperlinks in text
+\usepackage{biblatex} % Required for BIB style referencing
+\usepackage{array} % Required for ease of formatting tables
+\usepackage[a4paper, portrait, margin=1in]{geometry}
+
+
+\title{LunaNet}
+\author{Jay Bell, Ashley Farnworth}
+\date{August 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\subsection*{What this project is:}
+
+KURE x Tech has built a software reference implementation of the LunaNet Signal-In-Space - Augmented Forward Signal (LSIS-AFS) specification for NASA's LunaNet program. It's focus is pure software digital signal processing: spreading codes, message encoding/decoding, frame structure, and baseband IQ sample generation - not RF hardware.
+
+This implementation was developed as part of the LSIS-AFS Reference Implementation Competition running March-August 2026, using a gateway-based approach and scoring teams on correctness, performance, completeness, code quality, and innovation.
+
+\subsection*{What this project implements:}
+
+At a high level, the project aims to provide:
+\begin{itemize}
+    \item Spreading code generators (Gold, Weil, Legendre; primary, secondary, tertiary) for PRN 1-210, validated against Annex 3 reference codes.
+    \item Forward error correction and integrity: BCH(51,8), rate 1/2 LDPC encoders/decoders for SB2-SB4, and CRC-24 generation/validation.
+    \item Navigation message framing: 12-second frames with sync pattern, Subframes 1-4, and correct bit/symbol allocations per LSIS-AFS Volume A.
+    \item Baseband signal generation: dual-channel BPSK AFS-I/AFS-Q at 1.023 Mchips and 5.115 Mchips, producing IQ sample files at configurable sample rates.
+ Decoding and parsing: frame synchronization, FEC decoding, CRC checking, and extraction of clock, ephemeris, and network access data.
+    \item Validation utilities: test vectors, BER vs SNR checks, and LSIS requirement compliance reports.
+\end{itemize}
+
+\subsection*{Who this is for:}
+
+This repository is intended for: 
+\begin{itemize}
+    \item Competition judges who need to verify gateway completion, LSIS compliance, and performance against the published requirements and deliverables.
+    \item Contributors implementing or extending the LSIS-AFS reference stack in any programming language with a focus on reproducible, test-driven DSP.
+    \item Researchers and students looking for a worked example of a GNSS-style lunar navigation signal implementation aligned with the official LunaNet interoperability specification.
+\end{itemize}
+
+\newpage
+
+\section{Setup and build instructions}
+
+\subsection*{Setup}
+
+To set up this project, you'll need to import our github repo, which can be found \href{https://github.com/KURE-x-Tech/Spreading-Codes.git}{here} or at \url{https://github.com/KURE-x-Tech/Spreading-Codes.git}.
+You'll need to install any dependencies as outlined in this documentation. They are as follows
+
+\subsection*{Prerequisites}
+
+To compile and build this project, you'll need the following utilities at your disposal: 
+\begin{itemize}
+    \item CMake 3.16 or newer
+    \item A C++17 compiler
+    \item Git
+\end{itemize}
+
+\subsubsection*{Platform toolchains}
+
+\begin{itemize}
+    \item Windows: Visual Studio 2019 or newer with the Desktop development with C++ workload, or Ninja with an MSVC/Clang environment
+    \item macOS: Xcode Command Line Tools (\verb|xcode-select --install|)
+    \item Linux: GCC 9 or newer, or Clang 10 or newer, and Make or Ninja
+\end{itemize}
+Before attempting to run any code, you should verify your tools versions' to ensure it is up to date. This can be done with the following commands: 
+\begin{verbatim}
+    cmake --version
+    c++ --version
+\end{verbatim}
+On Windows, run the compiler check from a Developer PowerShell if using MSVC: 
+\begin{verbatim}
+    cmake --version
+    cl
+\end{verbatim}
+
+\subsection*{Quick Start}
+
+
+\subsubsection*{macOS or Linux}
+
+To begin on macOS or Linux, run the following: 
+\begin{verbatim}
+    cd /path/to/Spreading-Codes
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel
+    ./build/bin/goon version
+    ctest --test-dir build --output-on-failure
+\end{verbatim}
+This should generate the following files in macOS: 
+\begin{itemize}
+    \item build/bin/goon
+    \item build/bin/test\_engine
+    \item build/lib/liblunanet\_spreading\_codes.dylib
+\end{itemize}
+Alternatively, in Linux it will generate the following:
+\begin{itemize}
+    \item build/bin/goon
+    \item build/bin/test\_engine
+    \item build/lib/liblunanet\_spreading\_codes.so
+\end{itemize}
+
+\subsubsection*{Windows with Visual Studio}
+
+Visual Studio is a multi-configuration generator, so include \verb|--config Release| when building and \verb|-C Release| when running CTest.
+Run the following code to build this project in Visual Studio: 
+\begin{verbatim}
+    cd <path>\Spreading-Codes
+    cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+    cmake --build build --config Release --parallel
+    .\build\bin\Release\goon.exe version
+    ctest --test-dir build -C Release --output-on-failure
+\end{verbatim}
+This should generate the following files: 
+\begin{itemize}
+    \item build/bin/Release/goon.exe
+    \item build/bin/Release/test\_engine.exe
+    \item build/bin/Release/lunanet\_spreading\_codes.dll
+\end{itemize}
+
+\subsubsection*{Windows with Ninja}
+
+Run the following with a Developer PowerShell so that Ninja can locate the selected compiler: 
+\begin{verbatim}
+    cd <path>\Spreading-Codes
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel
+    .\build\bin\goon.exe version
+    ctest --test-dir build --output-on-failure
+\end{verbatim}
+IMPORTANT NOTE: Do not reuse one build directory with a different CMake generator. Use a new directory such as \verb|build-vs| or \verb|build-ninja| when switching generators.
+
+\subsection*{Install the \texttt{goon} command for QA}
+
+\verb|cmake --build| updates the executable only inside the build directory (\verb|build/bin/goon| for single-configuration generators or \verb|build/bin/Release/goon.exe| for Visual Studio). It does not replace a command \verb|goon| that was previously installed. Compare them with:
+\begin{verbatim}
+    ./build/bin/goon version
+    type -a goon
+    goon version
+\end{verbatim}
+On macOS or Linux, install without administrator privileges into the standard user-local prefix:
+\begin{verbatim}
+    cmake --install build --prefix "$HOME/.local"
+    export PATH="$HOME/.local/bin:$PATH"
+    hash -r 2>/dev/null || true
+    goon version
+\end{verbatim}
+If the current shell is \verb|zsh|, rehash may be used instead of \verb|hash -r|. Ensure \verb|$HOME/.local/bin| appears before /usr/local/bin when \verb|type -a goon| lists more than one copy.
+For a Visual Studio build on Windows:
+\begin{verbatim}
+    $prefix = Join-Path $env:LOCALAPPDATA "LunaNet"
+    cmake --install build --config Release --prefix $prefix
+    $env:Path = "$prefix\bin;$env:Path"
+    where.exe goon
+    goon.exe version
+\end{verbatim}
+The installation is relocatable and includes \verb|goon|, its shared library, runtime configuration, specification tables, Annex reference data, and LDPC matrices. QA commands therefore work outside the repository directory. The version printed by \verb|goon version| is generated from \verb|project(... VERSION ...)| in CMakeLists.txt; there is no second hard-coded CLI version.
+For an isolated package smoke test without modifying \verb|PATH|:
+\begin{verbatim}
+    cmake --install build --prefix /tmp/lunanet-qa
+    cd /tmp
+    /tmp/lunanet-qa/bin/goon version
+    /tmp/lunanet-qa/bin/goon generate-codes --codes gold --output gold.txt
+\end{verbatim}
+
+\newpage
+
+\section{API Documentation}
+
+\newpage
+
+\section{Usage examples}
+\subsection*{Running the Software}
+
+The main application is \verb|goon|. It can generate spreading-code families, assemble a 6000-symbol navigation frame, or generate an interleaved float32 I/Q signal.
+
+Set a convenient executable variable for the examples below.
+\begin{verbatim}
+    # macOS or Linux
+    GOON=./build/bin/goon
+\end{verbatim}
+\begin{verbatim}
+    # Visual Studio build; use .\build\bin\goon.exe for Ninja
+    $GOON = ".\build\bin\Release\goon.exe"
+\end{verbatim}
+Display the complete built-in help or version:
+\begin{verbatim}
+    "$GOON" --help
+    "$GOON" version
+\end{verbatim}
+\begin{verbatim}
+    & $GOON --help
+    & $GOON version
+\end{verbatim}
+
+\subsubsection*{Generate Spreading Codes}
+
+Generate all supported code families into a directory:
+\begin{verbatim}
+    "$GOON" generate-codes --codes all --output Validation/generated/cli_codes
+\end{verbatim}
+\begin{verbatim}
+    & $GOON generate-codes --codes all --output Validation\generated\cli_codes
+\end{verbatim}
+Generate only the Gold family as one text file:
+\begin{verbatim}
+    "$GOON" generate-codes --codes gold --output Validation/generated/gold_codes.txt
+\end{verbatim}
+
+\subsubsection*{Assemble a Navigation Frame}
+
+\begin{verbatim}
+    "$GOON" encode \
+      --format frame \
+      --prn 1 --fid 0 --toi 42 --wn 100 --itow 250 \
+      --config config/spreading_codes_config.ini \
+      --csv-dir Validation/annex3/csv \
+      --output Validation/generated/example_frame.bin
+\end{verbatim}
+PowerShell uses a backtick for line continuation: 
+\begin{verbatim}
+    & $GOON encode `
+      --format frame `
+      --prn 1 --fid 0 --toi 42 --wn 100 --itow 250 `
+      --config config\spreading_codes_config.ini `
+      --csv-dir Validation\annex3\csv `
+      --output Validation\generated\example_frame.bin
+\end{verbatim}
+
+\subsubsection*{Generate an I/Q Signal}
+
+Replace \verb|frame| with \verb|iq32| to run frame assembly, spreading, modulation, and I/Q export end to end. A full 12-second signal is much larger than a frame file.
+\begin{verbatim}
+    "$GOON" encode \
+      --format iq32 \
+      --prn 1 --fid 0 --toi 42 --wn 100 --itow 250 \
+      --rate 1023000 \
+      --config config/spreading_codes_config.ini \
+      --csv-dir Validation/annex3/csv \
+      --output Validation/iq_output/example_signal.iq32
+\end{verbatim}
+The accepted ranges are \verb|PRN 1-210|, \verb|FID 0-3|, \verb|TOI 0-99|, \verb|WN 0-8191|, and \verb|ITOW 0-511|.
+Run \verb|goon --help| for the command summary.
+
+\subsection*{Run Validation}
+
+\subsubsection*{Recommended: CTest}
+
+CTest knows the correct working directory and executable path for all configured tests. Run the complete suite after every clean build:
+\begin{verbatim}
+    ctest --test-dir build --output-on-failure
+\end{verbatim}
+For a Visual Studio build, add the selected configuration:
+\begin{verbatim}
+    ctest --test-dir build -C Release --output-on-failure
+\end{verbatim}
+List the tests without running them:
+\begin{verbatim}
+    ctest --test-dir build -N
+\end{verbatim}
+Run one gateway or one exact test with a regular-expression filter:
+\begin{verbatim}
+    ctest --test-dir build -R '^gateway1_' --output-on-failure
+    ctest --test-dir build -R '^gateway2_' --output-on-failure
+    ctest --test-dir build -R '^gateway3_' --output-on-failure
+    ctest --test-dir build -R '^gateway4_' --output-on-failure
+    ctest --test-dir build -R '^gateway5_' --output-on-failure
+    ctest --test-dir build -R '^gateway6_' --output-on-failure
+    ctest --test-dir build -R '^gateway6_subframe[1-4]_parser_test$' --output-on-failure
+\end{verbatim}
+Add \verb|-C Release| to these commands for a Visual Studio build.
+
+The Gateway 5 CTest group covers frame synchronization, sync detection, despreading, symbol extraction, BCH decoding, deinterleaving, LDPC decoding, CRC validation, complete frame decoding, and the Gateway 5-to-6 navigation handoff. Gateway 6 has focused Subframe 1-4 parser tests; the integration handoff checks that Gateway 5's accepted SB1-SB4 output parses in Gateway 6 and preserves the computed relative SB2 time of transmission.
+
+The Gateway 5 CTest filter includes the longer deterministic BER qualification. Run it directly when only the benchmark report is needed:
+\begin{verbatim}
+    ./build/bin/gateway5_ber_benchmark
+\end{verbatim}
+For Visual Studio, \verb|use build\bin\Release\gateway5_ber_benchmark.exe|.
+
+The benchmark decodes 102 real-matrix SB2/SB3/SB4 sets at 3 dB. Its fixed seed and 299,880 decoded bits make the empirical BER and CRC-acceptance result reproducible. It does not treat correlated bits within an LDPC codeword as independent statistical trials.
+
+\newpage
+
+\subsubsection*{Decode a Navigation Signal}
+
+Generate and decode the headerless workshop IQ32 format:
+\begin{verbatim}
+    ./build/bin/goon encode \
+      --format iq32 --prn 7 --fid 2 --toi 73 --wn 1234 --itow 256 \
+      --output signal.iq32
+    
+    ./build/bin/goon decode \
+      --input signal.iq32 --input-format raw --prn 7 --rate 1023000 \
+      --output decoded.json
+\end{verbatim}
+\verb|decoded.json| contains FID/TOI, acquisition and LDPC telemetry, CRC verdicts, and a \verb|subframes| object with the Gateway 6 parsed SB1-SB4 results, including \verb|subframes.sb2.time_of_transmission_seconds|. Compatibility fields retain the CRC-stripped SB2/SB3/SB4 payloads. See \verb|docs/G5/GATEWAY5_DECODER.md| for the standardized input format, API usage, stage behavior, and operating limits.
+
+\subsubsection*{Validation Report Engine}
+
+\verb|test_engine| runs the report-producing Gateway 1-4 validation suites. CTest is still required for the standalone Gateway 3-6 component tests.
+\begin{verbatim}
+    ./build/bin/test_engine config/spreading_codes_config.ini
+    ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway1
+    ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway2
+    ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway3
+    ./build/bin/test_engine config/spreading_codes_config.ini --gateway gateway4
+\end{verbatim}
+For Windows, use \verb|build\bin\Release\test_engine.exe| with Visual Studio or \verb|build\bin\test_engine.exe| with Ninja.
+Reports are written to:
+\begin{itemize}
+    \item \verb|Validation/reports/YYYY-MM-DD/HH-MM-SS.md|
+    \item \verb|Validation/reports/YYYY-MM-DD/HH-MM-SS.xml|
+\end{itemize}
+Gateway-filtered runs add \verb|_gatewayX| to the filename.
+
+\subsubsection*{Run Component Executables Directly}
+
+CTest is preferred, but a single-config macOS/Linux build can run a component test directly:
+\begin{verbatim}
+    ./build/bin/gateway5_crc_validation_test
+    ./build/bin/gateway5_frame_decoder_test
+    ./build/bin/gateway5_gateway6_handoff_test
+    ./build/bin/gateway6_subframe1_parser_test
+    ./build/bin/gateway6_subframe2_parser_test
+    ./build/bin/gateway6_subframe3_parser_test
+    ./build/bin/gateway6_subframe4_parser_test
+\end{verbatim}
+For Windows, add \verb|.exe| and use either \verb|build\bin\Release\| for Visual Studio or \verb|build\bin\| for Ninja.
+
+\subsection*{Clean Reproduction}
+
+For a release-candidate check, configure a fresh build tree rather than relying on incremental artifacts:
+\begin{verbatim}
+    cmake -S . -B build-clean -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-clean --parallel
+    ctest --test-dir build-clean --output-on-failure
+\end{verbatim}
+Use the Visual Studio generator, \verb|--config Release|, and \verb|-C Release| equivalents from the Windows quick start when creating a clean Visual Studio build.
+
+\subsection*{Troubleshooting Steps}
+
+\begin{itemize}
+    \item \verb|CTest| reports no tests: rerun \verb|cmake -S . -B build|, then check \verb|ctest --test-dir build -N|.
+    \item Executable not found: multi-configuration generators normally use \verb|build/bin/Release/|; single-configuration generators use \verb|build/bin/|.
+    \item CMake reports a generator mismatch: configure a new build directory instead of reusing one created by another generator.
+    \item Configuration or Annex 3 data cannot be found: verify the build tree is complete or reinstall the self-contained package. Use \verb|--config| and \verb|--csv-dir| only when selecting alternate data explicitly.
+    \item Shared-library loading fails: rebuild the complete build tree or reinstall \verb|goon| and its sibling library into the same prefix.
+    \item Git on a macOS external volume reports \verb|non-monotonic index| for a \verb|.git/objects/pack/._pack-*| file: remove only those AppleDouble sidecar files; do not remove the corresponding pack-* files.
+\end{itemize}
+
+\newpage
+
+\section{Architecture and design decisions}
+
+This project required a large amount of planning. Due to this, we found a gateway-based approach to be best suited to this. 
+
+We started with planning out our route to a fully developed solution, which we decided to implement during our gateway 0 phase. This allowed us to maintain a consistent momentum throughout the project, with an idea of what was next at every stage. Below is a brief summary of how we planned out the timeline for this project, including the gateway numbers, their names and functions, and the planned timelines we aimed to adhere to. 
+
+\newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
+
+\begin{center}
+\setlength{\extrarowheight}{5pt} 
+\renewcommand{\arraystretch}{1.1} 
+\begin{tabular}{ |M{1.5cm}|M{4cm}|M{7cm}|M{2cm}| }
+  \hline
+     \textbf{Gateway} & \textbf{Name} & \textbf{Function} & \textbf{Planned completion}\\ 
+  \hline
+  \hline
+     0 & Design \& Architecture & System design, setup and testing strategy & End of April 2026\\
+
+     1 & Spreading code generation & Gold, Primary and Tertiary code generation. AFS-Q construction and configuration loading & End of April 2026\\
+
+     2 & Forward error correction & Implement BCH encoding, CRC-24Q, dense GF(2) encoding and 60x98 block interleaver & End of May 2026 \\
+
+     3 & Navigation message framing & Build the fixed synchronisation pattern, timing header, clock payload, data payload and network access payload. Produce resulting 6000 symbol frame. & End of May 2026 \\
+
+     4 & Baseband signal generation & \_ & End of June 2026 \\
+
+     5 & Frame synchronisation and decoding & \_ & End of July 2026 \\
+
+     6 & Message parsing & \_ & End of July 2026 \\
+
+     7 & Integration and validation & \_ & End of August 2026 \\
+     
+     8 & Documentation and examples & \_ & End of August 2026 \\
+  \hline
+\end{tabular}
+\end{center}
+
+\newpage
+
+\section{Test documentation and running tests}
+
+\section{Performance analysis report}
+
+\newpage
+
+\cite{}
+
+\end{document}

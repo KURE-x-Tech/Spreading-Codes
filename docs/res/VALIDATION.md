@@ -10,7 +10,7 @@ This document explains how to collect the evidence referenced by the submission 
 | Frame structure and encoding | `codes/gateway3/`, `gateway3_frame_exporter_test`, and `docs/spec_tables/table_12_sync_pattern.csv` / `table_14_frame_structure.csv` |
 | Signal generation and export | `codes/gateway4/`, `gateway4_signal_exporter_test`, and `goon encode --format iq32` |
 | Receiver behavior | `codes/gateway5/`, Gateway 5 CTest targets, and [GATEWAY5_DECODER.md](../G5/GATEWAY5_DECODER.md) |
-| Message parsing and handoff | `codes/gateway6/`, parser tests, and `gateway5_gateway6_handoff_test` |
+| Message parsing and handoff | `codes/gateway6/`, parser tests, and `gateway5_gateway6_handoff_test`, including relative SB2 ToT preservation |
 | Automated report artifacts | `Validation/reports/YYYY-MM-DD/` after running `test_engine` |
 
 ## Reproducible Test Sequence
@@ -87,11 +87,11 @@ Use this table as a final-run worksheet:
 - 6000-symbol frame assembly with 68-symbol sync, 52-symbol SB1, and 5880 interleaved SB2-SB4 symbols.
 - BPSK and AFS-I/AFS-Q signal generation with supported sample-rate constraints.
 - Normalized frame synchronization, soft BCH/LDPC decoding, CRC gating, and accepted-payload handoff.
-- SB1-SB4 parser modules and local Gateway 5-to-6 integration.
+- SB1-SB4 parser modules, relative SB2 ToT computation, and local Gateway 5-to-6 integration.
 
 ### Not Yet Demonstrated
 
-- Absolute ToT because the LRT epoch is unspecified in the source material.
+- Absolute UTC/GPS-style ToT conversion because the LRT epoch is unspecified in the source material.
 - All detailed SB2, SB3, and SB4 message semantics where the source specification is provisional or incomplete.
 - External interoperability with another implementation.
 - Multi-node routing and network behavior.

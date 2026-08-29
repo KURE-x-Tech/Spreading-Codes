@@ -10,6 +10,7 @@ Reviewed 2026-08-23. Gateways 1-6 are implemented in the current pipeline. These
      $$
      ToT = WN \times 604800 + ITOW \times 1200 + TOI \times 12
      $$
+   - Implemented in Gateway 6 as `time_of_transmission_seconds`, a relative LSIS epoch offset emitted by `goon decode` under `subframes.sb2`.
    - The LSIS document leaves the LRT start epoch as `{LSIS-TBD-2003}`. Do not present a UTC/GPS-style absolute timestamp until that epoch is specified.
 
 2. **Specification-dependent message semantics**

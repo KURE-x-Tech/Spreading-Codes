@@ -271,7 +271,8 @@ The Gateway 5 CTest group covers frame synchronization, sync detection,
 despreading, symbol extraction, BCH decoding, deinterleaving, LDPC decoding,
 CRC validation, complete frame decoding, and the Gateway 5-to-6 navigation
 handoff. Gateway 6 has focused Subframe 1-4 parser tests; the integration handoff
-checks that Gateway 5's accepted SB1-SB4 output parses in Gateway 6.
+checks that Gateway 5's accepted SB1-SB4 output parses in Gateway 6 and preserves
+the computed relative SB2 time of transmission.
 
 The Gateway 5 CTest filter includes the longer deterministic BER qualification.
 Run it directly when only the benchmark report is needed:
@@ -302,8 +303,9 @@ Generate and decode the headerless workshop IQ32 format:
 ```
 
 `decoded.json` contains FID/TOI, acquisition and LDPC telemetry, CRC verdicts,
-and a `subframes` object with the Gateway 6 parsed SB1-SB4 results. Compatibility
-fields retain the CRC-stripped SB2/SB3/SB4 payloads. See
+and a `subframes` object with the Gateway 6 parsed SB1-SB4 results, including
+`subframes.sb2.time_of_transmission_seconds`. Compatibility fields retain the
+CRC-stripped SB2/SB3/SB4 payloads. See
 `docs/G5/GATEWAY5_DECODER.md` for the standardized input format, API usage,
 stage behavior, and operating limits.
 

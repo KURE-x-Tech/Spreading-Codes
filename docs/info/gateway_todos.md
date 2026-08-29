@@ -9,7 +9,7 @@ Last updated: 2026-08-10
 - Gateway 3: Complete frame assembly pipeline.
 - Gateway 4: Complete baseband generation pipeline.
 - Gateway 5: Integrated AFS-I receiver implemented and qualified for the documented software profile.
-- Gateway 6: SB2/SB3 parsing implemented with a tested Gateway 5 payload handoff.
+- Gateway 6: SB1-SB4 parsing, relative ToT computation, and tested Gateway 5 payload handoff are implemented.
 
 ## Gateway 5 Completion Evidence
 
@@ -36,7 +36,7 @@ Last updated: 2026-08-10
 
 ## Cross-Gateway Next Steps
 
-- Gateway 6 implementation: complete SB4 parsing and ToT computation.
+- Gateway 6 implementation: complete; absolute timestamp conversion remains blocked on the undefined LRT start epoch.
 - End-to-end round-trip qualification: encode -> channel/noise -> decode -> parse.
 
 ## External References

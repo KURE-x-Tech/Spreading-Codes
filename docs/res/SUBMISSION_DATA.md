@@ -36,7 +36,7 @@ This document is the source of truth for completing the LSIS-AFS competition sub
 
 The implementation is organized as independent gateway libraries under `codes/`. Gateway 1 generates Gold, Weil primary, Weil tertiary, secondary, and tiered spreading sequences from the checked-in configuration and Annex 3 data. Gateway 2 provides BCH, CRC-24Q, LDPC encoding, and the 60x98 block interleaver. Gateway 3 builds SB1-SB4 and assembles the 6000-symbol navigation frame. Gateway 4 spreads and modulates the frame and exports I/Q data.
 
-Gateway 5 is the receive-side inverse path. It imports raw IQ32 or standardized LSISIQ files, acquires the known PRN, de-spreads AFS-I symbols, detects the normalized sync pattern, extracts the frame, performs soft BCH and LDPC decoding, validates all three CRCs, and releases only fully accepted frames. Gateway 6 consumes the CRC-stripped payloads and parses SB1-SB4 into structured results. The `goon` CLI is the operational entry point; the C API and Python `ctypes` wrapper provide scripting and FFI access.
+Gateway 5 is the receive-side inverse path. It imports raw IQ32 or standardized LSISIQ files, acquires the known PRN, de-spreads AFS-I symbols, detects the normalized sync pattern, extracts the frame, performs soft BCH and LDPC decoding, validates all three CRCs, and releases only fully accepted frames. Gateway 6 consumes the CRC-stripped payloads and parses SB1-SB4 into structured results, including relative SB2 time-of-transmission seconds. The `goon` CLI is the operational entry point; the C API and Python `ctypes` wrapper provide scripting and FFI access.
 
 The design keeps the core signal operations deterministic and testable. Runtime reference data is loaded from `config/`, `docs/spec_tables/`, and `Validation/annex3/`. The receiver preserves soft values until FEC decisions, uses normalized correlation for gain-invariant acquisition, and gates the Gateway 5-to-6 handoff on CRC acceptance.
 
@@ -50,7 +50,7 @@ The design keeps the core signal operations deterministic and testable. Runtime 
 | 3 - Navigation message framing | Complete | Sync pattern, SB1-SB4 builders, CRC/LDPC processing, interleaving, 6000-symbol assembly, and binary/CSV/hex export are implemented. |
 | 4 - Baseband signal generation | Complete for the implemented signal path | BPSK, AFS-I data spreading, AFS-Q generation, rational chip-index mapping, and IQ32/CSV export are implemented. The documented workshop profile uses AFS-I at 1.023 MHz. |
 | 5 - Frame synchronization and decoding | Complete for the qualified operating envelope | `goon decode` and the integrated receiver are implemented. Qualification uses known PRN, AFS-I, integer chip timing, integer-multiple sample rate, AWGN, and the measured SNR points in [VALIDATION.md](VALIDATION.md). |
-| 6 - Message parsing | Partial | All four parser modules and the Gateway 5 handoff are implemented. ToT absolute-time calculation is pending because the LSIS LRT epoch is unresolved; SB2/SB3/SB4 message semantics remain provisional where the source specification is incomplete. |
+| 6 - Message parsing | Partial | All four parser modules, relative ToT computation, JSON emission, and the Gateway 5 handoff are implemented. Absolute timestamp conversion remains pending because the LSIS LRT epoch is unresolved; SB2/SB3/SB4 message semantics remain provisional where the source specification is incomplete. |
 | 7 - Integration and validation | Partial | End-to-end encode-to-IQ-to-decode-to-parse tests and deterministic receiver qualification exist. Multi-node networking, external interoperability, broader BER curves, and full compliance closure remain outstanding. |
 | 8 - Documentation and examples | Complete for the current implementation scope | Root README, reproduction runbook, gateway documentation, source-linked evidence, and this submission data pack are present. |
 
@@ -139,7 +139,7 @@ For Visual Studio, use `build-submission-vs/bin/Release/goon.exe` in the equival
 | Table 10 and Table 11 | `docs/spec_tables/table_10_secondary_codes.csv`, `docs/spec_tables/table_11_code_assignments.csv`, and Gateway 1 assignment tests. |
 | Frame structure | `docs/spec_tables/table_12_sync_pattern.csv`, `docs/spec_tables/table_14_frame_structure.csv`, `codes/gateway3/`, and the Gateway 3 standalone test. |
 | Receiver qualification | [GATEWAY5_DECODER.md](../G5/GATEWAY5_DECODER.md) records 9960/10000 sync detections at 0.1 dB, a 99.4819% one-sided 95% lower bound, 16/10000 false alarms, 0/1000 de-spread symbol errors, 0/299,880 post-LDPC bit errors at 3 dB, 102/102 CRC-accepted frames, at most 10 LDPC iterations, and 70.8 ms worst measured three-subframe decode latency. |
-| Gateway 6 handoff | `codes/gateway5_gateway6_handoff_test` and the parser tests verify accepted SB1-SB4 output reaches the four parser modules without mutation. |
+| Gateway 6 handoff | `codes/gateway5_gateway6_handoff_test` and the parser tests verify accepted SB1-SB4 output reaches the four parser modules without mutation, including the computed relative SB2 time of transmission. |
 | Generated reports | Fresh `test_engine` runs write Markdown and JUnit XML under `Validation/reports/YYYY-MM-DD/`. Include the final run paths in `SUBMISSION.md`. |
 
 ## Performance Table
@@ -179,7 +179,7 @@ No external partner interoperability result is recorded in the repository. The l
 
 ## Known Limitations
 
-- Absolute Time of Transmission cannot be reported until the LSIS LRT epoch marked `{LSIS-TBD-2003}` is defined.
+- Absolute Time of Transmission can only be reported as relative seconds until the LSIS LRT epoch marked `{LSIS-TBD-2003}` is defined.
 - SB2 clock/ephemeris details, SB3 message coverage, and SB4 network-access semantics are provisional where the detailed LSIS/LNSP message contract is incomplete.
 - The receiver qualification assumes known PRN, AFS-I, integer chip timing, an integer-multiple sample rate, and AWGN. External recordings, fading, interference, multi-PRN acquisition, and fractional timing are not qualified.
 - No multi-node mesh networking, routing, acknowledgments, retry policy, or packet-level SISICD is implemented.
@@ -224,7 +224,7 @@ This is an evidence-based starting point, not a final score. The scoring table m
 | --- | ---: | --- |
 | Correctness (40) | TBD | Strong verified coverage for Gateways 1-5 and parser-level Gateway 6; unresolved specification-dependent fields remain. |
 | Performance (20) | TBD | Receiver latency and sync/BER qualification are measured; real-time factor and several target-specific values still need final measurement. |
-| Completeness (20) | TBD | Gateways 1-6 are substantially implemented; Gateway 7 interoperability/networking and absolute ToT remain incomplete. |
+| Completeness (20) | TBD | Gateways 1-6 are substantially implemented, including Gateway 6 relative ToT; Gateway 7 interoperability/networking and absolute timestamp conversion remain incomplete. |
 | Code quality (10) | TBD | Modular C++17 libraries, CTest targets, report generation, C API, and Python bridge. |
 | Innovation and extras (10) | TBD | Receiver confidence gating, real-matrix soft decoding, rational I/Q mapping, caching, and tooling. |
 | **Total (100)** | **TBD** | Complete after evidence and team metadata are finalized. |

@@ -774,7 +774,9 @@ namespace
             << ", \"toi\": " << static_cast<int>(sb1.toi) << "},\n"
             << "    \"sb2\": {\"wn\": " << sb2.wn
             << ", \"itow\": " << sb2.itow
-            << ", \"toi\": " << static_cast<int>(sb2.toi) << "},\n"
+            << ", \"toi\": " << static_cast<int>(sb2.toi)
+            << ", \"time_of_transmission_seconds\": "
+            << sb2.time_of_transmission_seconds << "},\n"
             << "    \"sb3\": {\"type\": " << static_cast<int>(sb3.type)
             << ", \"payload_bit_count\": " << sb3.raw_payload.size() << "},\n"
             << "    \"sb4\": {\"type\": " << static_cast<int>(sb4.type)
