@@ -26,8 +26,10 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
-//NOMINMAX is added for proceed validation for Gateway7
+// Avoid Windows min/max macro collisions with std::min/std::max.
+#if !defined(NOMINMAX)
 #define NOMINMAX
+#endif
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>

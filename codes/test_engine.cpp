@@ -1397,9 +1397,12 @@ int main(int argc, char** argv) {
     if (run_gateway4) {
         RunGateway4Tests(repo_root, reporter);
     }
-    //if (run_gateway5) {
-      //  RunGateway5Tests(repo_root, reporter);
-    //}
+    if (options.gateway == GatewaySelection::kGateway5) {
+        std::cerr << "FAIL: Gateway 5 validation is not wired into test_engine; "
+                  << "use the dedicated gateway5_* qualification binaries instead."
+                  << std::endl;
+        return 1;
+    }
 
     reporter.PrintSummary(std::cout);
 

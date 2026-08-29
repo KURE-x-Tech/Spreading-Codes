@@ -52,11 +52,14 @@ std::vector<double> AddAwgnAndComputeLlrs(const std::vector<uint8_t>& encoded,
 std::uint64_t CountBitErrors(
     const std::vector<uint8_t>& expected,
     const std::vector<uint8_t>& actual) {
+    if (expected.size() != actual.size()) {
+        return static_cast<std::uint64_t>(expected.size());
+    }
 
     std::uint64_t error_count = 0;
     for (std::size_t i = 0; i < expected.size(); ++i) {
         if (expected[i] != actual[i]) {
-            error_count +=1;
+            ++error_count;
         }
     }
     return error_count;
@@ -242,8 +245,38 @@ for (const QualificationResult& result : results) {
 
 std::filesystem::create_directories(output_dir);
 
+if (results.empty()) {
+    std::cerr << "FAIL: no SNR qualifications were produced\n";
+    return 1;
+}
+
+const QualificationResult& high_snr = results.back();
+if (high_snr.total_bits == 0) {
+    std::cerr << "FAIL: high-SNR qualification produced no decoded bits\n";
+    return 1;
+}
+if (high_snr.ber_result >= 1e-5) {
+    std::cerr << "FAIL: high-SNR BER check failed at " << high_snr.snr_db
+              << " dB: " << high_snr.ber_result << " >= 1e-5\n";
+    return 1;
+}
+if (high_snr.accepted_frames != k_trials) {
+    std::cerr << "FAIL: high-SNR acceptance check failed: "
+              << high_snr.accepted_frames << "/" << k_trials
+              << " frames accepted\n";
+    return 1;
+}
+if (high_snr.max_iterations >= 50) {
+    std::cerr << "FAIL: high-SNR LDPC iterations exceeded the 50-iteration cap\n";
+    return 1;
+}
+if (high_snr.worst_frame_ms >= 1000.0) {
+    std::cerr << "FAIL: high-SNR worst-frame latency exceeded 1000 ms\n";
+    return 1;
+}
+
 const std::filesystem::path output_csv =
-    output_dir / "gateway7_snr_results.csv";
+output_dir / "gateway7_snr_results.csv";
 
 std::ofstream csv_file(output_csv);
 
