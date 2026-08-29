@@ -42,6 +42,7 @@ enum class GatewaySelection {
     kGateway2,
     kGateway3,
     kGateway4,
+    kGateway5,
 };
 
 struct RunOptions {
@@ -82,6 +83,10 @@ bool ParseGatewaySelection(const std::string& value, GatewaySelection* selection
         *selection = GatewaySelection::kGateway4;
         return true;
     }
+    if (normalized == "gateway5" || normalized == "g5" || normalized == "5") {
+        *selection = GatewaySelection::kGateway5;
+        return true;
+    }
     return false;
 }
 
@@ -91,6 +96,7 @@ std::string GatewayScopeName(GatewaySelection selection) {
         case GatewaySelection::kGateway2: return "gateway2";
         case GatewaySelection::kGateway3: return "gateway3";
         case GatewaySelection::kGateway4: return "gateway4";
+        case GatewaySelection::kGateway5: return "gateway5";
         case GatewaySelection::kAll:
         default: return "all";
     }
@@ -98,9 +104,9 @@ std::string GatewayScopeName(GatewaySelection selection) {
 
 void PrintUsage(std::ostream& out, const char* exe_name) {
     out << "Usage: " << exe_name
-        << " [config_path] [reports_base] [--gateway <all|gateway1|gateway2|gateway3|gateway4>]" << std::endl;
+        << " [config_path] [reports_base] [--gateway <all|gateway1|gateway2|gateway3|gateway4|gateway5>]" << std::endl;
     out << "       " << exe_name
-        << " [--gateway <all|gateway1|gateway2|gateway3|gateway4>] [config_path] [reports_base]" << std::endl;
+        << " [--gateway <all|gateway1|gateway2|gateway3|gateway4|gateway5>] [config_path] [reports_base]" << std::endl;
     out << std::endl;
     out << "Options:" << std::endl;
     out << "  --gateway, -g  Validation scope to run (default: all)." << std::endl;
@@ -1354,6 +1360,9 @@ int main(int argc, char** argv) {
     const bool run_gateway4 =
         options.gateway == GatewaySelection::kAll ||
         options.gateway == GatewaySelection::kGateway4;
+    const bool run_gateway5 =
+        options.gateway == GatewaySelection::kAll ||
+        options.gateway == GatewaySelection::kGateway5;
 
     std::cout << "Validation scope: " << GatewayScopeName(options.gateway) << std::endl;
 
@@ -1387,6 +1396,12 @@ int main(int argc, char** argv) {
 
     if (run_gateway4) {
         RunGateway4Tests(repo_root, reporter);
+    }
+    if (options.gateway == GatewaySelection::kGateway5) {
+        std::cerr << "FAIL: Gateway 5 validation is not wired into test_engine; "
+                  << "use the dedicated gateway5_* qualification binaries instead."
+                  << std::endl;
+        return 1;
     }
 
     reporter.PrintSummary(std::cout);
