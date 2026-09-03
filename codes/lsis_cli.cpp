@@ -31,10 +31,12 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <process.h>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #elif defined(__linux__)
 #include <unistd.h>
+#include <sys/wait.h>
 #endif
 
 #include "spreading_codes.h"
@@ -251,6 +253,142 @@ namespace
             fs::path("share") / "lunanet" / "Validation" / "annex3" / "csv",
             "Validation/annex3/csv",
             true);
+    }
+
+    std::string QuoteShellArgument(const fs::path &path)
+    {
+#ifdef _WIN32
+        std::string quoted = "\"";
+        for (const char ch : path.generic_string())
+        {
+            if (ch == '"')
+                quoted += '\\';
+            quoted += ch;
+        }
+        quoted += '"';
+        return quoted;
+#else
+        std::string quoted = "'";
+        for (const char ch : path.string())
+        {
+            if (ch == '\'')
+                quoted += "'\\''";
+            else
+                quoted += ch;
+        }
+        quoted += '\'';
+        return quoted;
+#endif
+    }
+
+    int ExitCodeFromSystemResult(int result)
+    {
+        if (result == -1)
+            return 1;
+#if defined(__linux__) || defined(__APPLE__)
+        if (WIFEXITED(result))
+            return WEXITSTATUS(result);
+        return 1;
+#else
+        return result;
+#endif
+    }
+
+    fs::path FindCtestBuildDirectory(const std::string &explicit_path)
+    {
+        if (!explicit_path.empty())
+            return fs::path(explicit_path);
+
+        fs::path search = g_executable_dir;
+        for (int depth = 0; !search.empty() && depth < 5; ++depth)
+        {
+            std::error_code error;
+            if (fs::is_regular_file(search / "CTestTestfile.cmake", error) && !error)
+                return search;
+            if (!search.has_parent_path() || search == search.parent_path())
+                break;
+            search = search.parent_path();
+        }
+        return "build";
+    }
+
+    int CmdTest(Args &a)
+    {
+        bool run_ctest = false;
+        bool run_test_engine = false;
+        std::string build_dir;
+        std::string configuration;
+
+        while (HasNext(a))
+        {
+            if (Match(a, "--ctest"))
+            {
+                run_ctest = true;
+                continue;
+            }
+            if (Match(a, "--test-engine"))
+            {
+                run_test_engine = true;
+                continue;
+            }
+            if (GetString(a, "--build-dir", build_dir))
+                continue;
+            if (GetString(a, "--config", configuration))
+                continue;
+            std::cerr << "error: unknown test option: " << Peek(a) << "\n";
+            return 1;
+        }
+
+        if (run_ctest == run_test_engine)
+        {
+            std::cerr << "error: specify exactly one of --ctest or --test-engine\n";
+            return 1;
+        }
+
+        if (run_ctest)
+        {
+            const fs::path selected_build_dir = FindCtestBuildDirectory(build_dir);
+            std::error_code error;
+            if (!fs::is_regular_file(selected_build_dir / "CTestTestfile.cmake", error) || error)
+            {
+                std::cerr << "error: no configured CTest build found at "
+                          << selected_build_dir.string()
+                          << "; configure and build the project first, or pass --build-dir <path>\n";
+                return 1;
+            }
+            std::string command =
+                "ctest --test-dir " + QuoteShellArgument(selected_build_dir);
+            if (!configuration.empty())
+                command += " -C " + QuoteShellArgument(fs::path(configuration));
+            command += " --output-on-failure";
+            return ExitCodeFromSystemResult(std::system(command.c_str()));
+        }
+
+        fs::path test_engine = g_executable_dir / "test_engine";
+#ifdef _WIN32
+        test_engine += ".exe";
+#endif
+        std::error_code error;
+        if (!fs::is_regular_file(test_engine, error) || error)
+        {
+            std::cerr << "error: test_engine is not available beside goon at "
+                      << test_engine.string()
+                      << "; use a configured build output\n";
+            return 1;
+        }
+#ifdef _WIN32
+        const std::string executable_path = test_engine.string();
+        const std::string config_path = FindConfigPath("");
+        const char *arguments[] = {
+            executable_path.c_str(),
+            config_path.c_str(),
+            nullptr};
+        const intptr_t result = _spawnv(_P_WAIT, executable_path.c_str(), arguments);
+        return result == -1 ? 1 : static_cast<int>(result);
+#else
+        return ExitCodeFromSystemResult(std::system(
+            (QuoteShellArgument(test_engine) + " " + QuoteShellArgument(FindConfigPath(""))).c_str()));
+#endif
     }
 
     // ── Hex string to bytes ─────────────────────────────────────────────────────
@@ -1041,6 +1179,7 @@ namespace
             << "  generate-codes  Generate 210 spreading codes (Gold/Weil/Tertiary)\n"
             << "  encode          Encode navigation frame / generate I/Q signal\n"
             << "  decode          Decode a navigation frame from an I/Q signal\n"
+            << "  test            Run CTest or the validation report engine\n"
             << "  version         Print version\n\n"
             << "examples:\n"
             << "  " << prog << " generate-codes --output codes.txt\n"
@@ -1048,7 +1187,9 @@ namespace
             << "  " << prog << " generate-codes --codes all  --output generated/\n"
             << "  " << prog << " encode --format frame --prn 1 --fid 0 --toi 42 --wn 100 --itow 250\n"
             << "  " << prog << " encode --format iq32  --prn 1 --fid 0 --toi 42 --wn 100 --itow 250\n"
-            << "  " << prog << " decode --input signal.iq32 --prn 1\n";
+            << "  " << prog << " decode --input signal.iq32 --prn 1\n"
+            << "  " << prog << " test --ctest [--build-dir build] [--config Release]\n"
+            << "  " << prog << " test --test-engine\n";
     }
 
 } // namespace
@@ -1087,6 +1228,11 @@ int main(int argc, char **argv)
     if (std::strcmp(cmd, "decode") == 0)
     {
         return CmdDecode(a);
+    }
+
+    if (std::strcmp(cmd, "test") == 0)
+    {
+        return CmdTest(a);
     }
 
     if (std::strcmp(cmd, "help") == 0 || std::strcmp(cmd, "--help") == 0 ||
