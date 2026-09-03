@@ -195,22 +195,22 @@ namespace
 
     // ---------------------------------------------------------------------------
     // Helper: verify that af0 and af1 CED fields are correctly extracted.
-    // Bit layout: af0 at bits 29-60 (32-bit signed), af1 at bits 61-76 (16-bit signed).
+    // Bit layout: af0 at CED bits 0-31, af1 at CED bits 32-47.
     // Scale factors: af0 * 2^-31 s, af1 * 2^-43 s/s.
     // ---------------------------------------------------------------------------
     bool TestCedFields(int32_t af0_raw, int16_t af1_raw, const std::string &label)
     {
         std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
-        // Pack 32-bit af0 into bits 29-60 (MSB first).
+        // Pack 32-bit af0 into the start of the CED block (MSB first).
         for (int i = 0; i < 32; ++i)
         {
-            bits[static_cast<size_t>(29 + i)] =
+            bits[static_cast<size_t>(lunanet::gateway6::kSb2CedOffset + i)] =
                 (static_cast<uint32_t>(af0_raw) >> (31 - i)) & 1u;
         }
-        // Pack 16-bit af1 into bits 61-76 (MSB first).
+        // Pack 16-bit af1 immediately after af0 in the CED block (MSB first).
         for (int i = 0; i < 16; ++i)
         {
-            bits[static_cast<size_t>(61 + i)] =
+            bits[static_cast<size_t>(lunanet::gateway6::kSb2CedOffset + 32 + i)] =
                 (static_cast<uint16_t>(af1_raw) >> (15 - i)) & 1u;
         }
 
@@ -247,14 +247,16 @@ namespace
 
     // ---------------------------------------------------------------------------
     // Helper: verify that health status bits are correctly round-tripped.
-    // We manually pack a 1176-bit vector with a known health value at bits 77-78.
+    // We manually pack a 1176-bit vector with a known health value at bits 22-29.
     // ---------------------------------------------------------------------------
     bool TestHealthBits(uint8_t health_val, const std::string &label)
     {
         std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
-        // Pack health at bits 77-78 (2 bits, MSB first).
-        bits[77] = (health_val >> 1u) & 1u;
-        bits[78] = health_val & 1u;
+        for (int i = 0; i < lunanet::gateway6::kSb2HealthBits; ++i)
+        {
+            bits[static_cast<std::size_t>(lunanet::gateway6::kSb2HealthOffset + i)] =
+                (health_val >> (lunanet::gateway6::kSb2HealthBits - 1 - i)) & 1u;
+        }
 
         lunanet::gateway6::Subframe2Data parsed;
         std::string error;
@@ -270,7 +272,79 @@ namespace
                       << ", want " << static_cast<int>(health_val) << "\n";
             return false;
         }
+        if (parsed.health.raw_bits.size() != static_cast<std::size_t>(lunanet::gateway6::kSb2HealthBits) ||
+            parsed.health.raw_bits.front() != bits[lunanet::gateway6::kSb2HealthOffset] ||
+            parsed.health.raw_bits.back() !=
+                bits[lunanet::gateway6::kSb2HealthOffset + lunanet::gateway6::kSb2HealthBits - 1] ||
+            !parsed.health.provisional_layout)
+        {
+            std::cerr << "FAIL [" << label << "]: health raw/provisional metadata mismatch\n";
+            return false;
+        }
         std::cout << "PASS [" << label << "]: health.status=" << static_cast<int>(health_val) << "\n";
+        return true;
+    }
+
+    bool TestProvisionalFieldBlocks()
+    {
+        std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
+        bits[lunanet::gateway6::kSb2CedOffset] = 1u;
+        bits[lunanet::gateway6::kSb2CedOffset + lunanet::gateway6::kSb2CedBits - 1] = 1u;
+        bits[lunanet::gateway6::kSb2TimeConversionsOffset] = 1u;
+        bits[lunanet::gateway6::kSb2TimeConversionsOffset +
+             lunanet::gateway6::kSb2TimeConversionsBits - 1] = 1u;
+        bits[lunanet::gateway6::kSb2SpareOffset] = 1u;
+        bits[lunanet::gateway6::kSb2SpareOffset + lunanet::gateway6::kSb2SpareBits - 1] = 1u;
+
+        lunanet::gateway6::Subframe2Data parsed;
+        std::string error;
+        if (!lunanet::gateway6::ParseSubframe2(bits, &parsed, &error))
+        {
+            std::cerr << "FAIL [field-blocks]: ParseSubframe2 error: " << error << "\n";
+            return false;
+        }
+
+        if (parsed.ced.raw_bits.size() != static_cast<std::size_t>(lunanet::gateway6::kSb2CedBits) ||
+            parsed.ced.raw_bits.front() != 1u || parsed.ced.raw_bits.back() != 1u ||
+            !parsed.ced.provisional_layout)
+        {
+            std::cerr << "FAIL [field-blocks]: CED raw block mismatch\n";
+            return false;
+        }
+
+        if (parsed.time_conversions.raw_bits.size() !=
+                static_cast<std::size_t>(lunanet::gateway6::kSb2TimeConversionsBits) ||
+            parsed.time_conversions.raw_bits.front() != 1u ||
+            parsed.time_conversions.raw_bits.back() != 1u ||
+            !parsed.time_conversions.provisional_layout)
+        {
+            std::cerr << "FAIL [field-blocks]: Time Conversions raw block mismatch\n";
+            return false;
+        }
+
+        if (parsed.spare_bits.size() != static_cast<std::size_t>(lunanet::gateway6::kSb2SpareBits) ||
+            parsed.spare_bits.front() != 1u || parsed.spare_bits.back() != 1u)
+        {
+            std::cerr << "FAIL [field-blocks]: spare raw block mismatch\n";
+            return false;
+        }
+
+        std::cout << "PASS [field-blocks]: CED/TimeConv/spare raw blocks preserved\n";
+        return true;
+    }
+
+    bool TestRejectsNonBinaryBit()
+    {
+        std::vector<uint8_t> bits(lunanet::gateway6::kSb2DataBits, 0u);
+        bits[100] = 2u;
+        lunanet::gateway6::Subframe2Data parsed;
+        std::string error;
+        if (lunanet::gateway6::ParseSubframe2(bits, &parsed, &error) || error.empty())
+        {
+            std::cerr << "FAIL [non-binary]: expected rejection\n";
+            return false;
+        }
+        std::cout << "PASS [non-binary]: rejected with \"" << error << "\"\n";
         return true;
     }
 
@@ -297,6 +371,7 @@ int main()
 
     // Null output pointer.
     ok &= TestRejectsNullOutput();
+    ok &= TestRejectsNonBinaryBit();
 
     // Health status values (0–3).
     ok &= TestHealthBits(0, "health-healthy");
@@ -324,6 +399,7 @@ int main()
     ok &= TestCedFields(2147483647, 32767, "ced-max-positive");
     ok &= TestCedFields(-1, -1, "ced-all-ones");
     ok &= TestCedFields(static_cast<int32_t>(0x80000000), -32768, "ced-min-negative");
+    ok &= TestProvisionalFieldBlocks();
 
     return ok ? 0 : 1;
 }

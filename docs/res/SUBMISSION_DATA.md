@@ -50,7 +50,7 @@ The design keeps the core signal operations deterministic and testable. Runtime 
 | 3 - Navigation message framing | Complete | Sync pattern, SB1-SB4 builders, CRC/LDPC processing, interleaving, 6000-symbol assembly, and binary/CSV/hex export are implemented. |
 | 4 - Baseband signal generation | Complete for the implemented signal path | BPSK, AFS-I data spreading, AFS-Q generation, rational chip-index mapping, and IQ32/CSV export are implemented. The documented workshop profile uses AFS-I at 1.023 MHz. |
 | 5 - Frame synchronization and decoding | Complete for the qualified operating envelope | `goon decode` and the integrated receiver are implemented. Qualification uses known PRN, AFS-I, integer chip timing, integer-multiple sample rate, AWGN, and the measured SNR points in [VALIDATION.md](VALIDATION.md). |
-| 6 - Message parsing | Partial | All four parser modules, relative ToT computation, JSON emission, and the Gateway 5 handoff are implemented. Absolute timestamp conversion remains pending because the LSIS LRT epoch is unresolved; SB2/SB3/SB4 message semantics remain provisional where the source specification is incomplete. |
+| 6 - Message parsing | Partial | All four parser modules, relative ToT computation, provisional SB2 CED/Time Conversions raw-field extraction, SB4 network-access raw payload extraction, JSON emission, and the Gateway 5 handoff are implemented. Absolute timestamp conversion remains pending because the LSIS LRT epoch is unresolved; final SB2/SB3/SB4 semantic decoding remains provisional where the source specification is incomplete. |
 | 7 - Integration and validation | Partial | End-to-end encode-to-IQ-to-decode-to-parse tests and deterministic receiver qualification exist. Multi-node networking, external interoperability, broader BER curves, and full compliance closure remain outstanding. |
 | 8 - Documentation and examples | Complete for the current implementation scope | Root README, reproduction runbook, gateway documentation, source-linked evidence, and this submission data pack are present. |
 
@@ -180,7 +180,7 @@ No external partner interoperability result is recorded in the repository. The l
 ## Known Limitations
 
 - Absolute Time of Transmission can only be reported as relative seconds until the LSIS LRT epoch marked `{LSIS-TBD-2003}` is defined.
-- SB2 clock/ephemeris details, SB3 message coverage, and SB4 network-access semantics are provisional where the detailed LSIS/LNSP message contract is incomplete.
+- Final SB2 clock/ephemeris semantics, expanded SB3 message coverage, and SB4 network-access semantics are provisional where the detailed LSIS/LNSP message contract is incomplete; Gateway 6 preserves the corresponding raw payload blocks for downstream decoding.
 - The receiver qualification assumes known PRN, AFS-I, integer chip timing, an integer-multiple sample rate, and AWGN. External recordings, fading, interference, multi-PRN acquisition, and fractional timing are not qualified.
 - No multi-node mesh networking, routing, acknowledgments, retry policy, or packet-level SISICD is implemented.
 - No external interoperability result or checked-in BER-versus-SNR curve is available.

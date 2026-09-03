@@ -776,11 +776,29 @@ namespace
             << ", \"itow\": " << sb2.itow
             << ", \"toi\": " << static_cast<int>(sb2.toi)
             << ", \"time_of_transmission_seconds\": "
-            << sb2.time_of_transmission_seconds << "},\n"
+            << sb2.time_of_transmission_seconds
+            << ", \"ced\": {\"provisional_layout\": " << sb2.ced.provisional_layout
+            << ", \"af0\": " << sb2.ced.af0
+            << ", \"af1\": " << sb2.ced.af1
+            << ", \"raw_bit_count\": " << sb2.ced.raw_bits.size()
+            << ", \"raw_hex\": \"" << BitsToHex(sb2.ced.raw_bits) << "\"}"
+            << ", \"health\": {\"provisional_layout\": " << sb2.health.provisional_layout
+            << ", \"status\": " << static_cast<int>(sb2.health.status)
+            << ", \"raw_bit_count\": " << sb2.health.raw_bits.size()
+            << ", \"raw_hex\": \"" << BitsToHex(sb2.health.raw_bits) << "\"}"
+            << ", \"time_conversions\": {\"provisional_layout\": "
+            << sb2.time_conversions.provisional_layout
+            << ", \"raw_bit_count\": " << sb2.time_conversions.raw_bits.size()
+            << ", \"raw_hex\": \"" << BitsToHex(sb2.time_conversions.raw_bits) << "\"}"
+            << ", \"spare_bit_count\": " << sb2.spare_bits.size() << "},\n"
             << "    \"sb3\": {\"type\": " << static_cast<int>(sb3.type)
             << ", \"payload_bit_count\": " << sb3.raw_payload.size() << "},\n"
             << "    \"sb4\": {\"type\": " << static_cast<int>(sb4.type)
-            << ", \"payload_bit_count\": " << sb4.raw_payload.size() << "}\n"
+            << ", \"payload_bit_count\": " << sb4.raw_payload.size()
+            << ", \"network_access\": {\"requires_lnsp_sisicd\": "
+            << sb4.requires_lnsp_sisicd
+            << ", \"raw_bit_count\": " << sb4.network_access_payload.size()
+            << ", \"raw_hex\": \"" << BitsToHex(sb4.network_access_payload) << "\"}}\n"
             << "  },\n"
             << "  \"ldpc_iterations\": {\"sb2\": " << decoded.sb2_ldpc.iterations
             << ", \"sb3\": " << decoded.sb3_ldpc.iterations

@@ -65,6 +65,8 @@ namespace lunanet::gateway6
         parsed.type = ExtractType(decoded_data_bits);
         parsed.raw_payload.assign(decoded_data_bits.begin() + kSb4TypeFieldBits,
                                   decoded_data_bits.end());
+        parsed.network_access_payload = parsed.raw_payload;
+        parsed.requires_lnsp_sisicd = true;
 
         *out_data = std::move(parsed);
         if (error_message)

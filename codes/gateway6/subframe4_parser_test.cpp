@@ -24,6 +24,7 @@ namespace
             return false;
         }
         if (output.type != type || output.raw_payload.size() != lunanet::gateway6::kSb4PayloadBits ||
+            output.network_access_payload != output.raw_payload || !output.requires_lnsp_sisicd ||
             output.raw_payload[0] != 1u || output.raw_payload[1] != 0u ||
             output.raw_payload[2] != 1u || output.raw_payload[3] != 1u ||
             output.raw_payload[4] != 0u)

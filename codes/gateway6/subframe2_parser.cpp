@@ -35,6 +35,11 @@ namespace lunanet::gateway6
             return static_cast<int64_t>(raw);
         }
 
+        std::vector<uint8_t> ExtractBitRange(const std::vector<uint8_t> &bits, int start, int count)
+        {
+            return std::vector<uint8_t>(bits.begin() + start, bits.begin() + start + count);
+        }
+
     } // namespace
 
     uint64_t ComputeTimeOfTransmissionSeconds(uint16_t wn, uint16_t itow, uint8_t toi)
@@ -73,9 +78,23 @@ namespace lunanet::gateway6
         //   bits  0–12   WN   (13 bits, unsigned, 0–8191)
         //   bits 13–21   ITOW  (9 bits, unsigned, 0–503)
         //   bits 22–28   TOI   (7 bits, unsigned, 0–99)
-        out_data->wn = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, 0, 13));
+        for (std::size_t i = 0; i < decoded_data_bits.size(); ++i)
+        {
+            if (decoded_data_bits[i] > 1u)
+            {
+                if (error_message)
+                {
+                    *error_message = "SB2 parser received non-binary value " +
+                                     std::to_string(decoded_data_bits[i]) +
+                                     " at bit " + std::to_string(i);
+                }
+                return false;
+            }
+        }
 
-        const auto itow = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, 13, 9));
+        out_data->wn = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, kSb2WnOffset, kSb2WnBits));
+
+        const auto itow = static_cast<uint16_t>(ExtractUBits(decoded_data_bits, kSb2ItowOffset, kSb2ItowBits));
         if (itow > 503)
         {
             if (error_message)
@@ -86,7 +105,7 @@ namespace lunanet::gateway6
             return false;
         }
 
-        const auto toi = static_cast<uint8_t>(ExtractUBits(decoded_data_bits, 22, 7));
+        const auto toi = static_cast<uint8_t>(ExtractUBits(decoded_data_bits, kSb2ToiOffset, kSb2ToiBits));
         if (toi > 99)
         {
             if (error_message)
@@ -113,8 +132,11 @@ namespace lunanet::gateway6
         // -----------------------------------------------------------------------
         constexpr double kAf0Scale = 4.6566128730773926e-10; // 2^-31
         constexpr double kAf1Scale = 1.1368683772161603e-13; // 2^-43
-        const int64_t af0_raw = ExtractSBits(decoded_data_bits, 29, 32);
-        const int64_t af1_raw = ExtractSBits(decoded_data_bits, 61, 16);
+        out_data->ced.raw_bits = ExtractBitRange(decoded_data_bits, kSb2CedOffset, kSb2CedBits);
+        out_data->ced.provisional_layout = true;
+
+        const int64_t af0_raw = ExtractSBits(decoded_data_bits, kSb2CedOffset, 32);
+        const int64_t af1_raw = ExtractSBits(decoded_data_bits, kSb2CedOffset + 32, 16);
         out_data->ced.af0 = static_cast<double>(af0_raw) * kAf0Scale;
         out_data->ced.af1 = static_cast<double>(af1_raw) * kAf1Scale;
 
@@ -124,16 +146,24 @@ namespace lunanet::gateway6
         // ORIGINAL INTERPRETATION -- spec marks this {LSIS-TBW-...}.
         // See subframe2_parser.h for rationale.
         //
-        //   bits 77–78   health.status (2 bits, unsigned)
-        //                0=healthy, 1=marginal, 2=unhealthy, 3=do-not-use
+        //   bits 22–29   health.status (8 bits, unsigned provisional value)
         // -----------------------------------------------------------------------
-        out_data->health.status = static_cast<uint8_t>(ExtractUBits(decoded_data_bits, 77, 2));
+        out_data->health.status = static_cast<uint8_t>(
+            ExtractUBits(decoded_data_bits, kSb2HealthOffset, kSb2HealthBits));
+        out_data->health.raw_bits = ExtractBitRange(decoded_data_bits,
+                                                    kSb2HealthOffset,
+                                                    kSb2HealthBits);
+        out_data->health.provisional_layout = true;
 
         // -----------------------------------------------------------------------
         // Time Conversions (MSG-G30) -- placeholder, no bits consumed yet.
         // The interoperability-4.pdf JSON example shows this as {}.
         // -----------------------------------------------------------------------
-        out_data->time_conversions = TimeConversions{};
+        out_data->time_conversions.raw_bits = ExtractBitRange(decoded_data_bits,
+                                                              kSb2TimeConversionsOffset,
+                                                              kSb2TimeConversionsBits);
+        out_data->time_conversions.provisional_layout = true;
+        out_data->spare_bits = ExtractBitRange(decoded_data_bits, kSb2SpareOffset, kSb2SpareBits);
 
         return true;
     }

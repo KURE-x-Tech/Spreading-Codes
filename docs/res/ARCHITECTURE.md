@@ -80,7 +80,7 @@ The receiver rejects malformed input, ambiguous acquisition, invalid FEC results
 
 ### Gateway 6: Message Parsing
 
-`codes/gateway6/` parses the accepted CRC-stripped payloads. It extracts SB1 FID/TOI, SB2 WN/ITOW/TOI plus relative time-of-transmission seconds, currently supported health, and provisional CED fields. It routes SB3 dynamic messages including the provisional orbit-almanac profile, and validates/labels SB4 dynamic network-access payloads.
+`codes/gateway6/` parses the accepted CRC-stripped payloads. It extracts SB1 FID/TOI, SB2 WN/ITOW/TOI plus relative time-of-transmission seconds, currently supported health, and provisional raw CED and Time Conversions blocks. It routes SB3 dynamic messages including the provisional orbit-almanac profile, and validates/labels SB4 dynamic network-access payloads while preserving the raw network-access bits for an LNSP SISICD decoder.
 
 Absolute ToT is intentionally not fabricated: the source specification leaves the LRT start epoch unresolved. The parser therefore exposes `time_of_transmission_seconds` as a relative LSIS epoch offset without claiming an absolute UTC/GPS-style timestamp.
 

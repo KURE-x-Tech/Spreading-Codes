@@ -10,7 +10,7 @@ This document explains how to collect the evidence referenced by the submission 
 | Frame structure and encoding | `codes/gateway3/`, `gateway3_frame_exporter_test`, and `docs/spec_tables/table_12_sync_pattern.csv` / `table_14_frame_structure.csv` |
 | Signal generation and export | `codes/gateway4/`, `gateway4_signal_exporter_test`, and `goon encode --format iq32` |
 | Receiver behavior | `codes/gateway5/`, Gateway 5 CTest targets, and [GATEWAY5_DECODER.md](../G5/GATEWAY5_DECODER.md) |
-| Message parsing and handoff | `codes/gateway6/`, parser tests, and `gateway5_gateway6_handoff_test`, including relative SB2 ToT preservation |
+| Message parsing and handoff | `codes/gateway6/`, parser tests, and `gateway5_gateway6_handoff_test`, including relative SB2 ToT preservation, provisional SB2 field-block extraction, and SB4 network-access raw payload extraction |
 | Automated report artifacts | `Validation/reports/YYYY-MM-DD/` after running `test_engine` |
 
 ## Reproducible Test Sequence

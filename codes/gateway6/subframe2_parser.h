@@ -12,6 +12,21 @@ namespace lunanet::gateway6
     // SB2 data width after CRC-24Q has been stripped by Gateway 5.
     // SB2 total = 1200 bits (Table 18): 1176 data + 24 CRC.
     constexpr int kSb2DataBits = 1176;
+    constexpr int kSb2WnOffset = 0;
+    constexpr int kSb2WnBits = 13;
+    constexpr int kSb2ItowOffset = 13;
+    constexpr int kSb2ItowBits = 9;
+    constexpr int kSb2ToiOffset = 22;
+    constexpr int kSb2ToiBits = 7;
+    constexpr int kSb2TimeHeaderBits = kSb2WnBits + kSb2ItowBits + kSb2ToiBits;
+    constexpr int kSb2HealthOffset = 22;
+    constexpr int kSb2HealthBits = 8;
+    constexpr int kSb2CedOffset = 30;
+    constexpr int kSb2CedBits = 896;
+    constexpr int kSb2TimeConversionsOffset = kSb2CedOffset + kSb2CedBits;
+    constexpr int kSb2TimeConversionsBits = 224;
+    constexpr int kSb2SpareOffset = kSb2TimeConversionsOffset + kSb2TimeConversionsBits;
+    constexpr int kSb2SpareBits = kSb2DataBits - kSb2SpareOffset;
     constexpr uint32_t kSecondsPerWeek = 604800;
     constexpr uint16_t kSecondsPerItow = 1200;
     constexpr uint8_t kSecondsPerToi = 12;
@@ -25,10 +40,10 @@ namespace lunanet::gateway6
     // chosen to be consistent with the interoperability-4.pdf JSON example
     // ("ced": {"af0": 1.23e-9, "af1": 4.56e-12, ...}).
     //
-    // Chosen layout (offsets measured from bit 29, after WN/ITOW/TOI header):
-    //   [29 .. 60]  af0  32 bits signed, scale 2^-31 s   (clock bias)
-    //   [61 .. 76]  af1  16 bits signed, scale 2^-43 s/s (clock drift)
-    //   [77 ..]     reserved / placeholder ephemeris fields (not yet defined)
+    // Chosen provisional view within the documented 896-bit CED block:
+    //   [30 .. 61]  af0  32 bits signed, scale 2^-31 s   (clock bias)
+    //   [62 .. 77]  af1  16 bits signed, scale 2^-43 s/s (clock drift)
+    //   [78 .. 925] reserved / placeholder ephemeris fields (not yet defined)
     //
     // These choices MUST be updated if and when the spec publishes the real layout.
     // -------------------------------------------------------------------------
@@ -36,8 +51,8 @@ namespace lunanet::gateway6
     {
         double af0 = 0.0; // Clock bias  [s] -- 32-bit signed int × 2^-31
         double af1 = 0.0; // Clock drift [s/s] -- 16-bit signed int × 2^-43
-        // Future ephemeris/position fields will be added here once the spec defines
-        // MSG-G4 bit allocations.
+        std::vector<uint8_t> raw_bits;
+        bool provisional_layout = true;
     };
 
     // -------------------------------------------------------------------------
@@ -47,12 +62,13 @@ namespace lunanet::gateway6
     // spec does not define exact bit-level field layouts.  We use a 2-bit field
     // as an ORIGINAL INTERPRETATION:
     //   0 = healthy, 1 = marginal, 2 = unhealthy, 3 = do not use.
-    // Bit offset: immediately follows CED fields (bit 77 in data stream).
+    // Bit offset: 22, length: 8 bits, per docs/spec_tables/sb2_bit_layout.csv.
     // -------------------------------------------------------------------------
     struct HealthData
     {
-        uint8_t status = 0; // 2-bit health status: 0=healthy, 1=marginal,
-                            //                      2=unhealthy, 3=do-not-use
+        uint8_t status = 0; // 8-bit provisional health status.
+        std::vector<uint8_t> raw_bits;
+        bool provisional_layout = true;
     };
 
     // -------------------------------------------------------------------------
@@ -62,7 +78,8 @@ namespace lunanet::gateway6
     // -------------------------------------------------------------------------
     struct TimeConversions
     {
-        // No fields defined yet.
+        std::vector<uint8_t> raw_bits;
+        bool provisional_layout = true;
     };
 
     // -------------------------------------------------------------------------
@@ -77,6 +94,7 @@ namespace lunanet::gateway6
         CedData ced;                               // Clock & Ephemeris Data (our bit layout)
         HealthData health;                         // Health & Safety (our bit layout)
         TimeConversions time_conversions;          // MSG-G30 placeholder
+        std::vector<uint8_t> spare_bits;
     };
 
     // Computes relative LSIS time-of-transmission seconds from Table 22 fields.
@@ -92,13 +110,15 @@ namespace lunanet::gateway6
     // Returns false and sets *error_message on length mismatch or other error.
     //
     // Bit layout consumed (MSB-first within each field):
-    //   bits  0–12   WN   (13 bits)
-    //   bits 13–21   ITOW  (9 bits)
-    //   bits 22–28   TOI   (7 bits)
-    //   bits 29–60   CED af0 (32-bit signed, scale 2^-31 s)
-    //   bits 61–76   CED af1 (16-bit signed, scale 2^-43 s/s)
-    //   bits 77–78   health.status (2 bits)
-    //   bits 79–1175 spare / reserved (MSG-G30 placeholder + fill)
+    //   bits    0–12    WN   (13 bits)
+    //   bits   13–21    ITOW (9 bits)
+    //   bits   22–28    TOI  (7 bits, repository handoff compatibility)
+    //   bits   22–29    Health raw block (8 bits, per sb2_bit_layout.csv)
+    //   bits   30–925   CED raw block (896 bits)
+    //   bits  926–1149  Time Conversions raw block (224 bits)
+    //   bits 1150–1175  spare / reserved
+    // The CED and Time Conversions blocks are retained as raw bits until the
+    // detailed LSIS/LNSP message layouts are finalized.
     // -------------------------------------------------------------------------
     bool ParseSubframe2(const std::vector<uint8_t> &decoded_data_bits,
                         Subframe2Data *out_data,
